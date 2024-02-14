@@ -75,7 +75,8 @@ wfc_clone_into(wfc_blocks_ptr *const restrict ret_ptr, uint64_t seed, const wfc_
 entropy_location
 blk_min_entropy(const wfc_blocks_ptr blocks, uint32_t gx, uint32_t gy)
 {
-    vec2 the_location   = { 0 };
+    vec2 blk_location   = { 0 };
+    vec2 grid_location   = { 0 };
     uint8_t min_entropy = UINT8_MAX;
     uint8_t entropy_test;
     int idx;
@@ -91,13 +92,17 @@ blk_min_entropy(const wfc_blocks_ptr blocks, uint32_t gx, uint32_t gy)
                     if(entropy_test < min_entropy)
                     {
                         min_entropy = entropy_test;
-                        the_location.x = block_x;
-                        the_location.y = block_y;
+                        blk_location.x = block_x;
+                        blk_location.y = block_y;
+
+                        grid_location.x = grid_x;
+                        grid_location.y = grid_y;
                     }
                 }
     entropy_location new;
     new.entropy = min_entropy;
-    new.location = the_location;
+    new.location_in_blk = blk_location;
+    new.location_in_grid = grid_location;
 
     return new;
 }
