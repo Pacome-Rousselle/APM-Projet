@@ -13,17 +13,17 @@
 wfc_args wfc_parse_args(int argc, char **argv);
 
 /// Get the next seed to try. If there are no more seeds to try, it will exit the process.
-bool try_next_seed(seeds_list *restrict *const, uint64_t *restrict);
+bool try_next_seed(seeds_list *restrict *const seeds, uint64_t *restrict return_seed);
 
 /// Count the total number of seeds.
-uint64_t count_seeds(const seeds_list *restrict const);
+uint64_t count_seeds(const seeds_list *restrict const seeds);
 
 /// Load the positions from a file. You must free the thing yourself. On error
 /// kill the program.
 wfc_blocks_ptr wfc_load(uint64_t, const char *);
 
 /// Clone the blocks structure. You must free the return yourself.
-void wfc_clone_into(wfc_blocks_ptr *const restrict, uint64_t, const wfc_blocks_ptr);
+void wfc_clone_into(wfc_blocks_ptr *const restrict ret_ptr, uint64_t, const wfc_blocks_ptr);
 
 /// Save the grid to a folder by creating a new file or overwrite it, on error kills the program.
 void wfc_save_into(const wfc_blocks_ptr, const char data[], const char folder[]);
@@ -80,11 +80,11 @@ static const wfc_solver solvers[] = {
 #endif
 };
 
-// Get thread index
-int thread_glob_idx(const wfc_blocks_ptr blocks, uint8_t grid_X, uint8_t grid_Y, uint8_t block_X, uint8_t block_Y)
+// Get a global thread index
+static inline int get_thread_glob_idx(const wfc_blocks_ptr blocks, uint8_t grid_X, uint8_t grid_Y, uint8_t block_X, uint8_t block_Y)
 {
     int block_id = grid_X * blocks->grid_side + grid_Y;
     int Nb_threads = blocks->block_side * blocks->block_side;
     int local_id = block_X * blocks->block_side + block_Y;
     return block_id*Nb_threads + local_id;
-}
+};

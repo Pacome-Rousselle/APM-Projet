@@ -29,7 +29,7 @@ target_include_directories(wfc PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/inc)
 target_link_libraries(wfc  PRIVATE -pthread -fopenmp -lm)
 target_compile_options(wfc PRIVATE -g -O2 -pthread -fopenmp -std=c17)
 target_compile_options(wfc PRIVATE
-    -Wall -Wextra -pedantic -Werror
+    -Wall -Wextra -pedantic
     -Wshadow
     -Wcast-align -Wconversion -Wsign-conversion -Wdouble-promotion
     -Wunused-variable

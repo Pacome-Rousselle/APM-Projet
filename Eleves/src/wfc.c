@@ -32,9 +32,11 @@ entropy_collapse_state(uint64_t state,
         .seed      = seed,
         .iteration = iteration,
     };
-
+    // Digest is now randomly filled
     md5((uint8_t *)&random_state, sizeof(random_state), digest);
-
+    // Choose a random bit to set state to
+    random_number = bitfield_count(state)%digest[0];
+    bitfield_set(state,random_number);
     return 0;
 }
 
@@ -77,20 +79,27 @@ blk_min_entropy(const wfc_blocks_ptr blocks, uint32_t gx, uint32_t gy)
     uint8_t min_entropy = UINT8_MAX;
     uint8_t entropy_test;
     int idx;
-    for (int grid_x = 0; grid_x < blocks->grid_side; grid_x++)
-        for (int grid_y = 0; grid_y < blocks->grid_side; grid_y++)
+    //Navigate through the grid
+    for (int grid_x = 0; grid_x < gx; grid_x++)
+        for (int grid_y = 0; grid_y < gy; grid_y++)
+        //Navigate through the block
             for (int block_x = 0; block_x < blocks->block_side; block_x++)
                 for (int block_y = 0; block_y < blocks->block_side; block_y++)
                 {
-                    idx = thread_glob_idx(grid_x,grid_y,block_x,block_y);
+                    idx = get_thread_glob_idx(blocks, grid_x,grid_y,block_x,block_y);
                     entropy_test = entropy_compute(blocks->states[idx]);
                     if(entropy_test < min_entropy)
                     {
                         min_entropy = entropy_test;
+                        the_location.x = block_x;
+                        the_location.y = block_y;
                     }
                 }
+    entropy_location new;
+    new.entropy = min_entropy;
+    new.location = the_location;
 
-    return 0;
+    return new;
 }
 
 static inline uint64_t
@@ -123,14 +132,23 @@ grd_check_error_in_column(wfc_blocks_ptr blocks, uint32_t gx)
     return 0;
 }
 
+// Traverse the block to propagate, aka ridding every other cases of the collapsed state
 void
 blk_propagate(wfc_blocks_ptr blocks,
               uint32_t gx, uint32_t gy,
               uint64_t collapsed)
 {
+    for (int i = 0; i < gx; i++)
+        for (int j = 0; j < gy; j++)
+        {
+            blocks->states[collapsed];
+        }
+        
+    
     return 0;
 }
 
+// Traverse the row to propagate, aka ridding every other cases of the collapsed state
 void
 grd_propagate_row(wfc_blocks_ptr blocks,
                   uint32_t gx, uint32_t gy, uint32_t x, uint32_t y,
@@ -139,9 +157,16 @@ grd_propagate_row(wfc_blocks_ptr blocks,
     return 0;
 }
 
+// Traverse the column to propagate, aka ridding every other cases of the collapsed state
 void
 grd_propagate_column(wfc_blocks_ptr blocks, uint32_t gx, uint32_t gy,
                      uint32_t x, uint32_t y, uint64_t collapsed)
 {
     return 0;
 }
+
+// Printing functions
+void blk_print(FILE *const, const wfc_blocks_ptr block, uint32_t gx, uint32_t gy)
+{}
+void grd_print(FILE *const, const wfc_blocks_ptr block)
+{}
