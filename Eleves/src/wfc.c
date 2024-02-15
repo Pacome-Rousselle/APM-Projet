@@ -36,8 +36,8 @@ entropy_collapse_state(uint64_t state,
     md5((uint8_t *)&random_state, sizeof(random_state), digest);
     // Choose a random bit to set state to
     random_number = bitfield_count(state)%digest[0];
-    bitfield_set(state,random_number);
-    return 0;
+    state = bitfield_only_nth_set(state,random_number);
+    return state;
 }
 
 uint8_t
@@ -76,33 +76,27 @@ entropy_location
 blk_min_entropy(const wfc_blocks_ptr blocks, uint32_t gx, uint32_t gy)
 {
     vec2 blk_location   = { 0 };
-    vec2 grid_location   = { 0 };
     uint8_t min_entropy = UINT8_MAX;
     uint8_t entropy_test;
     int idx;
-    //Navigate through the grid
-    for (int grid_x = 0; grid_x < gx; grid_x++)
-        for (int grid_y = 0; grid_y < gy; grid_y++)
-        //Navigate through the block
-            for (int block_x = 0; block_x < blocks->block_side; block_x++)
-                for (int block_y = 0; block_y < blocks->block_side; block_y++)
+    //Navigate through the block
+        for (int block_x = 0; block_x < blocks->block_side; block_x++)
+            for (int block_y = 0; block_y < blocks->block_side; block_y++)
+            {
+                idx = get_thread_glob_idx(blocks, gx,gy,block_x,block_y);
+                entropy_test = entropy_compute(blocks->states[idx]);
+                if(entropy_test < min_entropy)
                 {
-                    idx = get_thread_glob_idx(blocks, grid_x,grid_y,block_x,block_y);
-                    entropy_test = entropy_compute(blocks->states[idx]);
-                    if(entropy_test < min_entropy)
-                    {
-                        min_entropy = entropy_test;
-                        blk_location.x = block_x;
-                        blk_location.y = block_y;
-
-                        grid_location.x = grid_x;
-                        grid_location.y = grid_y;
-                    }
+                    min_entropy = entropy_test;
+                    blk_location.x = block_x;
+                    blk_location.y = block_y;
                 }
+            }
     entropy_location new;
     new.entropy = min_entropy;
     new.location_in_blk = blk_location;
-    new.location_in_grid = grid_location;
+    new.location_in_grid.x = gx;
+    new.location_in_grid.y = gy;
 
     return new;
 }
@@ -137,20 +131,24 @@ grd_check_error_in_column(wfc_blocks_ptr blocks, uint32_t gx)
     return 0;
 }
 
+// When propagating, check if a state gets only 1 state left to propagate it further
 // Traverse the block to propagate, aka ridding every other cases of the collapsed state
+// Make a loop to traverse all the grids, block by block
 void
 blk_propagate(wfc_blocks_ptr blocks,
               uint32_t gx, uint32_t gy,
               uint64_t collapsed)
 {
-    for (int i = 0; i < gx; i++)
-        for (int j = 0; j < gy; j++)
+    int idx;
+    for (int i = 0; i < blocks->block_side; i++)
+        for (int j = 0; j < blocks->block_side; j++)
         {
-            blocks->states[collapsed];
+            idx = get_thread_glob_idx(blocks,gx,gy,i,j);
+
+            // Bit wise AND (&=) with inverse of collapsed (~) (all 1s except the state at 0 we want to collapse)
+            blocks->states[idx] &= ~(collapsed);
         }
         
-    
-    return 0;
 }
 
 // Traverse the row to propagate, aka ridding every other cases of the collapsed state
