@@ -85,7 +85,8 @@ blk_min_entropy(const wfc_blocks_ptr blocks, uint32_t gx, uint32_t gy)
             {
                 idx = get_thread_glob_idx(blocks, gx,gy,block_x,block_y);
                 entropy_test = entropy_compute(blocks->states[idx]);
-                if(entropy_test < min_entropy)
+                
+                if((entropy_test < min_entropy) && (entropy_test > 1))
                 {
                     min_entropy = entropy_test;
                     blk_location.x = block_x;
