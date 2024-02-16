@@ -152,20 +152,34 @@ blk_propagate(wfc_blocks_ptr blocks,
 }
 
 // Traverse the row to propagate, aka ridding every other cases of the collapsed state
+// gx and x (grid and blocks row) are fixed
 void
 grd_propagate_row(wfc_blocks_ptr blocks,
                   uint32_t gx, uint32_t gy, uint32_t x, uint32_t y,
                   uint64_t collapsed)
 {
-    return 0;
+    int idx;
+    for (int i = 3*gx; i < 3*gx+blocks->grid_side; i++) // Block to block (following a row)
+        for (int j = 3*x; j < 3*x+blocks->block_side; j++) // States to states
+        {
+            idx = get_thread_glob_idx(blocks,gx,gy,i,j);
+            blocks->states[idx] &= ~(collapsed);
+        }
 }
 
 // Traverse the column to propagate, aka ridding every other cases of the collapsed state
+// gy and y (grid and blocks row) are fixed
 void
 grd_propagate_column(wfc_blocks_ptr blocks, uint32_t gx, uint32_t gy,
                      uint32_t x, uint32_t y, uint64_t collapsed)
 {
-    return 0;
+    int idx;
+    for (int i = gy; i < blocks->grid_side*blocks->grid_side; i += 3) // Block to block (following a row)
+        for (int j = 3*y; j < 3*y+blocks->block_side; j++) // States to states
+        {
+            idx = get_thread_glob_idx(blocks,gx,gy,i,j);
+            blocks->states[idx] &= ~(collapsed);
+        }
 }
 
 // Printing functions

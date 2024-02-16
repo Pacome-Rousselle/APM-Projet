@@ -54,9 +54,17 @@ solve_cpu(wfc_blocks_ptr blocks)
                       loc.location_in_grid.y,
                       blocks->states[idx]);
 
-        // Get the row and column of the state that collapsed
+        grd_propagate_row(blocks,loc.location_in_grid.x,
+                          loc.location_in_grid.y,
+                          loc.location_in_blk.x,
+                          loc.location_in_blk.y,
+                          blocks->states[idx]);
 
-        // grd_propagate_row(blocks,1,0,blocks->states[idx],);
+        grd_propagate_column(blocks,loc.location_in_grid.x,
+                          loc.location_in_grid.y,
+                          loc.location_in_blk.x,
+                          loc.location_in_blk.y,
+                          blocks->states[idx]);                 
         // grd_propagate_column(blocks,1,0,blocks->states[idx]);
 
         // Check Error
