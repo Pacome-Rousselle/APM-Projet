@@ -43,7 +43,17 @@ grd_at(wfc_blocks_ptr blocks, uint32_t gx, uint32_t gy)
 static inline uint64_t *
 blk_at(wfc_blocks_ptr blocks, uint32_t gx, uint32_t gy, uint32_t x, uint32_t y)
 {
-    return 0;
+        // Calculate the index into the states array for the given coordinates
+    uint64_t index = (gx * blocks->grid_side + gy) * (blocks->block_side * blocks->block_side)
+                                                     + (x * blocks->block_side + y);
+    
+    
+    
+    //printf("index %d ", index); 
+    // Return the address of the block at the calculated index
+    
+    return &(blocks->states[index]);
+    //return 0;
 }
 
 // Printing functions
@@ -88,3 +98,4 @@ static inline int get_thread_glob_idx(const wfc_blocks_ptr blocks, uint8_t grid_
     int local_id = block_X * blocks->block_side + block_Y;
     return block_id*Nb_threads + local_id;
 };
+

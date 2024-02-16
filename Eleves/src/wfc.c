@@ -13,6 +13,8 @@
 #include <string.h>
 #include <strings.h>
 
+#include <math.h> //for pow 
+
 uint64_t
 entropy_collapse_state(uint64_t state,
                        uint32_t gx, uint32_t gy, uint32_t x, uint32_t y,
@@ -140,23 +142,46 @@ blk_propagate(wfc_blocks_ptr blocks,
               uint64_t collapsed)
 {
     int idx;
+    uint64_t bc ; 
     for (int i = 0; i < blocks->block_side; i++)
         for (int j = 0; j < blocks->block_side; j++)
         {
             idx = get_thread_glob_idx(blocks,gx,gy,i,j);
 
-            // Bit wise AND (&=) with inverse of collapsed (~) (all 1s except the state at 0 we want to collapse)
+            // Bit wise AND (&=) with inverse of collapsed (~) 
+            //(all 1s except the state at 0 we want to collapse)
+
+           bc = bitfield_count(blocks->states[idx]); 
+           //printf("bc = %lu \n", bc); 
+           if (bc != 1)
             blocks->states[idx] &= ~(collapsed);
         }
         
 }
 
-// Traverse the row to propagate, aka ridding every other cases of the collapsed state
+// Traverse the row to propagate, 
+//aka ridding every other cases of the collapsed state
 void
 grd_propagate_row(wfc_blocks_ptr blocks,
                   uint32_t gx, uint32_t gy, uint32_t x, uint32_t y,
                   uint64_t collapsed)
 {
+    //propopgate only on the column 
+    int idx;
+    uint64_t bc ; 
+    for (int i = 0; i < blocks->block_side; i++)
+        //for (int j = 0; j < blocks->grid_side; j++)
+        //{
+            idx = get_thread_glob_idx(blocks,gx,gy,i,y);
+            
+            // Bit wise AND (&=) with inverse of collapsed (~) 
+            //(all 1s except the state at 0 we want to collapse)
+
+           bc = bitfield_count(blocks->states[idx]); 
+           //printf("bc = %lu \n", bc); 
+           if (bc != 1)
+            blocks->states[idx] &= ~(collapsed);
+        //}
     return 0;
 }
 
@@ -171,5 +196,68 @@ grd_propagate_column(wfc_blocks_ptr blocks, uint32_t gx, uint32_t gy,
 // Printing functions
 void blk_print(FILE *const, const wfc_blocks_ptr block, uint32_t gx, uint32_t gy)
 {}
-void grd_print(FILE *const, const wfc_blocks_ptr block)
-{}
+//void grd_print(FILE *const, const wfc_blocks_ptr block)
+//{}
+
+void printBinary2(uint64_t number) {
+    // Determine the number of bits in u64_t
+    int numBits = sizeof(uint64_t) + 1;
+
+    // Loop through each bit in the number, starting from the most significant bit
+    for (int i = numBits-1; i >=0; i--) {
+        // Use a bitwise AND operation to check the value of the current bit
+        if ((number & (1ULL << i)) != 0) {
+            printf("1");
+        } else {
+            printf("0");
+        }
+    }
+    // printf("\n");
+}
+
+void grd_print(FILE *const file, const wfc_blocks_ptr block){
+    FILE * fp = file;
+    if(fp == NULL)
+        fp = stdout;
+    
+    uint8_t gs = block->grid_side;
+    uint8_t bs = block->block_side;
+
+    for(uint32_t ii = 0; ii < gs; ii++){
+
+        for(uint32_t i = 0; i < gs; i++){
+            fprintf(fp, "+");
+            for(uint32_t j = 0; j < bs; j++){
+                fprintf(fp, "----------+");
+            }
+            fprintf(fp, "   ");
+        }
+        fprintf(fp, "\n");
+
+        for(uint32_t jj = 0; jj < bs; jj++){
+
+            for(uint32_t i = 0; i < gs; i++){
+                fprintf(fp, "|");
+                for(uint32_t j = 0; j < bs; j++){
+                    const uint64_t collapsed = *blk_at(block, ii,i,jj,j);
+                    printf("idx: %d ", get_thread_glob_idx(block, ii, i, jj, j)); 
+                    printBinary2(collapsed);
+                    fprintf(fp, " |", collapsed);
+                }
+                fprintf(fp, "   ");
+            }
+            fprintf(fp, "\n");
+
+            for(int i = 0; i < gs; i++){
+                fprintf(fp, "+");
+                for(int j = 0; j < bs; j++){
+                    fprintf(fp, "----------+");
+                }
+                fprintf(fp, "   ");
+            }
+            fprintf(fp, "\n");
+        }
+        fprintf(fp, "\n");
+    }
+
+}
