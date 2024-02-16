@@ -51,7 +51,7 @@ blk_at(wfc_blocks_ptr blocks, uint32_t gx, uint32_t gy, uint32_t x, uint32_t y)
     
     //printf("index %d ", index); 
     // Return the address of the block at the calculated index
-    
+
     return &(blocks->states[index]);
     //return 0;
 }
@@ -71,7 +71,8 @@ void grd_propagate_column(wfc_blocks_ptr, uint32_t, uint32_t, uint32_t, uint32_t
 void grd_propagate_row(wfc_blocks_ptr, uint32_t, uint32_t, uint32_t, uint32_t, uint64_t);
 
 // Check functions
-bool grd_check_error_in_column(wfc_blocks_ptr, uint32_t);
+bool grd_check_error_in_column(wfc_blocks_ptr blocks, uint32_t y, uint32_t gy);
+
 
 // Solvers
 bool solve_cpu(wfc_blocks_ptr);

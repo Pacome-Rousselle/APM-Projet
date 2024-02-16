@@ -1,3 +1,0 @@
-/home/gg/ders/M2/APM/APM-Projet/Eleves/build/CMakeFiles/wfc.dir
-/home/gg/ders/M2/APM/APM-Projet/Eleves/build/CMakeFiles/edit_cache.dir
-/home/gg/ders/M2/APM/APM-Projet/Eleves/build/CMakeFiles/rebuild_cache.dir
