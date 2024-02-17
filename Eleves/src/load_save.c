@@ -12,6 +12,8 @@
 #include <string.h>
 #include <strings.h>
 
+#include <inttypes.h> //to correctly print some values 
+
 /// With a block side of 8, we have blocks of 8*8 := 64, which is the number of bits in an uint64_t.
 static const uint8_t BLOCK_SIDE_U64 = 8;
 
@@ -84,6 +86,26 @@ to_u64(const char *string)
     return (uint32_t)integer;
 }
 
+
+void setBit(uint64_t *val, int bit, int value) {
+    if (value) {
+        *val |= ((uint64_t)1 << bit); // Set the bit
+    } else {
+        *val &= ~((uint64_t)1 << bit); // Clear the bit
+    }
+}
+
+
+uint64_t convertToBits(uint64_t value) {
+    if (value == 0) {
+        // If value is 0, set all bits to 1
+        return ~0ULL;
+    } else {
+        // Set only the corresponding bit to 1
+        return (1ULL << (value - 1));
+    }
+}
+
 wfc_blocks_ptr
 wfc_load(uint64_t seed, const char *path)
 {
@@ -140,6 +162,8 @@ wfc_load(uint64_t seed, const char *path)
         }
     }
 
+
+
     while ((read = getline(&line, &len, f)) != -1) {
         trim(line);
 
@@ -160,16 +184,29 @@ wfc_load(uint64_t seed, const char *path)
         }
 
         const uint64_t collapsed   = to_u64(str_state);
-        *blk_at(ret, gx, gy, x, y) = collapsed;
-        blk_propagate(ret, gx, gy, collapsed);
-        grd_propagate_column(ret, gx, gy, x, y, collapsed);
-        grd_propagate_row(ret, gx, gy, x, y, collapsed);
+        printf("locations:gx %u  gy %u x %u y %u value: %lu \n",gx, gy, x, y, collapsed); 
+        
+        uint64_t val = 0; 
+        val = convertToBits(collapsed); 
+        
+        *blk_at(ret, gx, gy, x, y) = val;
+        printf("in load_wfc function\n"); 
+        grd_print(NULL, ret); 
+        blk_propagate(ret, gx, gy, val);
+        printf("blk_propagate\n");
+        grd_print(NULL, ret);
+        grd_propagate_column(ret, gx, gy, x, y, val);
+        printf("calculate index %u\n ", get_thread_glob_idx(ret, gx, gy, x, y)); 
+        printf("grd_propogate_col\n"); 
+        grd_print(NULL, ret);
+        //grd_propagate_row(ret, gx, gy, x, y, collapsed);
         if (grd_check_error_in_column(ret, gx)) {
             fprintf(stderr, "wrong propagation in block (%u, %u) from (%u, %u)\n", gx, gy, x, y);
             exit(EXIT_FAILURE);
         }
     }
 
+    printf("load_wfc is finished\n"); 
     free(line);
     fclose(f);
     return ret;
