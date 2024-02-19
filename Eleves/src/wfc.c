@@ -72,7 +72,11 @@ wfc_clone_into(wfc_blocks_ptr *const restrict ret_ptr, uint64_t seed, const wfc_
     }
 
     memcpy(ret, blocks, size);
-    ret->states[0] = seed;
+    //ret->states[0] = seed;
+
+    uint64_t val = convertToBits(seed);
+    ret->states[0] = val;
+    
     *ret_ptr       = ret;
 }
 
@@ -266,6 +270,15 @@ grd_propagate_column(wfc_blocks_ptr blocks, uint32_t gx, uint32_t gy,
     //return 0;
 }
 
+void
+all_propagate(wfc_blocks_ptr blocks, uint32_t gx, uint32_t gy, 
+              uint32_t x, uint32_t y, uint64_t collapsed)
+{
+    blk_propagate(blocks,gx,gy,collapsed);
+    grd_propagate_column(blocks,gx,gy,x,y,collapsed);
+    grd_propagate_row(blocks,gx,gy,x,y,collapsed);
+}
+
 // Printing functions
 //void blk_print(FILE *const, const wfc_blocks_ptr block, uint32_t gx, uint32_t gy)
 //{}
@@ -277,6 +290,19 @@ printBinary2(uint64_t number)
     int numBits = sizeof(uint64_t) + 1;
 
     // Loop through each bit in the number, starting from the most significant bit
+    if (entropy_compute(number) == 1)
+    {
+        int pow = 1;
+        while (number != 1)
+        {
+            number/=2;
+            pow++;
+        }
+        
+        printf("    %d    ", pow);
+        return;
+    }
+    
     for (int i = numBits - 1; i >= 0; i--) {
         // Use a bitwise AND operation to check the value of the current bit
         if ((number & (1ULL << i)) != 0) {
