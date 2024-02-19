@@ -2,7 +2,6 @@
 
 #include "wfc.h"
 #include "bitfield.h"
-// #include "utils.h"
 #include "md5.h"
 
 #include <stdio.h>
@@ -72,11 +71,11 @@ wfc_clone_into(wfc_blocks_ptr *const restrict ret_ptr, uint64_t seed, const wfc_
     }
 
     memcpy(ret, blocks, size);
-    //ret->states[0] = seed;
+    // ret->states[0] = seed;
 
     uint64_t val = convertToBits(seed);
     ret->states[0] = val;
-    
+
     *ret_ptr       = ret;
 }
 
@@ -133,22 +132,9 @@ blk_filter_mask_for_block(wfc_blocks_ptr blocks,
 }
 
 bool
-grd_check_error_in_column(wfc_blocks_ptr blocks, uint32_t x, uint32_t gx)
+grd_check_error_in_row(wfc_blocks_ptr blocks, uint32_t gx, uint32_t x)
 {
-    //x is the location in the block of the minimum entropy last encountered
-    //we are in the same row
-    //in the column
-    //find the columns with definite cases i.e entropy= 1
-    //keep that in mind
-    //check all the values in the column
-    //find if there is any other states with entropy 1
-    //sheck if they are the same
-    //raise an error if they are the same
-    // int idx;
-    //uint8_t bc;
-    //
-
-    printf("in error checking \n"); 
+    printf("in row error checking \n"); 
     int idx;
     int idx_other;
     uint64_t cell_state;
@@ -157,8 +143,6 @@ grd_check_error_in_column(wfc_blocks_ptr blocks, uint32_t x, uint32_t gx)
     uint8_t other_cell_entropy;
     uint64_t other_cell_state;
 
-    //columns stays stable only the rows change
-    //or should it be in all the columns ?? like a general column wise check ? but then why the signature had only one value in it?
     for (uint32_t gy = 0; gy < blocks->grid_side; gy++) {
         for (uint32_t y = 0; y < blocks->block_side; y++) {
             idx          = get_thread_glob_idx(blocks, gx, gy, x, y);
@@ -189,6 +173,78 @@ grd_check_error_in_column(wfc_blocks_ptr blocks, uint32_t x, uint32_t gx)
     return true;
 }
 
+bool
+grd_check_error_in_column(wfc_blocks_ptr blocks, uint32_t gy, uint32_t y)
+{
+    printf("in col error checking \n"); 
+    int idx;
+    int idx_other;
+    uint64_t cell_state;
+    uint8_t cell_entropy;
+
+    uint8_t other_cell_entropy;
+    uint64_t other_cell_state;
+
+    for (uint32_t gx = 0; gx < blocks->grid_side; gx++) {
+        for (uint32_t x = 0; x < blocks->block_side; x++) {
+            idx          = get_thread_glob_idx(blocks, gx, gy, x, y);
+            cell_state   = blocks->states[idx];
+            cell_entropy = entropy_compute(cell_state);
+
+            if (cell_entropy == 1) {
+
+                for (uint32_t gxx = 0; gxx < blocks->grid_side; gxx++) {
+                    for (uint32_t xx = 0; xx < blocks->block_side; xx++) {
+                        idx_other = get_thread_glob_idx(blocks, gxx, gy, xx, y);
+                        if (idx != idx_other) {
+                            other_cell_entropy = entropy_compute(blocks->states[idx_other]);
+                            if (other_cell_entropy == 1) {
+                                other_cell_state = blocks->states[idx_other];
+                                if (other_cell_state == cell_state) {
+                                    return false;
+                                }
+                            }
+                        }
+                    }
+                }
+
+            }
+        }
+    }
+    // No errors found
+    return true;
+}
+
+bool
+grd_check_error_in_blk(wfc_blocks_ptr blocks, uint32_t gx, uint32_t gy, uint32_t x, uint32_t y)
+{
+    int idx;
+    int idx_other;
+    uint64_t cell_state;
+    uint8_t cell_entropy;
+
+    uint8_t other_cell_entropy;
+    uint64_t other_cell_state;
+
+    for (int i = 0; i < blocks->block_side; i++)
+        for (int j = 0; j < blocks->block_side; j++) {
+            idx          = get_thread_glob_idx(blocks, gx, gy, x, y);
+            cell_state   = blocks->states[idx];
+            cell_entropy = entropy_compute(cell_state);
+
+            if (cell_entropy == 1)
+                for (int ii = 0; ii < blocks->block_side; ii++)
+                    for (int jj = 0; jj < blocks->block_side; jj++) {
+                        idx_other = get_thread_glob_idx(blocks, gx, gy, ii, jj);
+                        other_cell_state = blocks->states[idx_other];
+                        other_cell_entropy = entropy_compute(blocks->states[idx_other]);
+
+                        if (idx != idx_other && other_cell_entropy == 1 && other_cell_state == cell_state)  
+                            return false;
+                    }   
+        }
+    return true;
+}
 
 // When propagating, check if a state gets only 1 state left to propagate it further
 // Traverse the block to propagate, aka ridding every other cases of the collapsed state

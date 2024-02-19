@@ -71,7 +71,9 @@ void grd_propagate_column(wfc_blocks_ptr, uint32_t, uint32_t, uint32_t, uint32_t
 void grd_propagate_row(wfc_blocks_ptr, uint32_t, uint32_t, uint32_t, uint32_t, uint64_t);
 
 // Check functions
-bool grd_check_error_in_column(wfc_blocks_ptr blocks, uint32_t y, uint32_t gy);
+bool grd_check_error_in_row(wfc_blocks_ptr blocks, uint32_t gx, uint32_t x);
+bool grd_check_error_in_column(wfc_blocks_ptr blocks, uint32_t gy, uint32_t y);
+bool grd_check_error_in_blk(wfc_blocks_ptr blocks, uint32_t gx, uint32_t gy, uint32_t x, uint32_t y);
 
 
 // Solvers

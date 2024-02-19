@@ -37,26 +37,31 @@ main(int argc, char **argv)
         if (!has_next_seed) {
             __atomic_fetch_or(quit_ptr, (int)1, __ATOMIC_SEQ_CST);
             fprintf(stderr, "no more seed to try\n");
+            printf("I'm out\n");
             break;
         }
 
         wfc_clone_into(&blocks, next_seed, init);
         const bool solved = args.solver(blocks);
+        printf("Atomic 1\n");
         __atomic_add_fetch(iterations_ptr, 1, __ATOMIC_SEQ_CST);
 
         if (solved && args.output_folder != NULL) {
+            printf("Atomic 2\n");
             __atomic_fetch_or(quit_ptr, (int)1, __ATOMIC_SEQ_CST);
             fputc('\n', stdout);
             wfc_save_into(blocks, args.data_file, args.output_folder);
         }
 
         else if (solved) {
+            printf("Atomic 3\n");
             __atomic_fetch_or(quit_ptr, (int)1, __ATOMIC_SEQ_CST);
             fputs("\nsuccess with result:\n", stdout);
             abort();
         }
 
         else if (!*quit_ptr) {
+            printf("Atomic 4\n");
             fprintf(stdout, "\r%.2f%% -> %.2fs",
                     ((double)(*iterations_ptr) / (double)(max_iterations)) * 100.0,
                     omp_get_wtime() - start);
