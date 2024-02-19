@@ -40,12 +40,11 @@ grd_print(NULL, blocks);
         
         //  assert ( entropy (D[x,y]) != 0)
         printf("loc.entropy is %zu\n", loc.entropy); 
-        //if (loc.entropy == 1)
-        //{
-        //printf("inside loc.entropy = 1\n"); 
-        //    return false;
-//
-        //}
+        if (loc.entropy == 1)
+        {
+        printf("inside loc.entropy = 1\n"); 
+            return false;
+        }
 
         // Collapse
         //  D[x,y] = collapse_state (D[x,y]) -> How do I get this
@@ -55,8 +54,6 @@ grd_print(NULL, blocks);
                                       loc.location_in_blk.x,
                                       loc.location_in_blk.y);
         printf("idx: %d\n", idx); 
-        if (entropy_compute(blocks->states[idx]) != 1)
-        {
             blocks->states[idx] = entropy_collapse_state(blocks->states[idx],
                                                     loc.location_in_grid.x,
                                                     loc.location_in_grid.y,
@@ -64,25 +61,38 @@ grd_print(NULL, blocks);
                                                     loc.location_in_blk.y,
                                                     seed,
                                                     iteration);
-        // Propagate
-        // In the block
+        //// Propagate
+        //// In the block
+        printf("before block\n"); 
+        grd_print(NULL, blocks);
+
         blk_propagate(blocks,
                       loc.location_in_grid.x,
                       loc.location_in_grid.y,
                       blocks->states[idx]);
+        printf("after block\n"); 
+        grd_print(NULL, blocks);
 
-        grd_propagate_row(blocks,loc.location_in_grid.x,
-                          loc.location_in_grid.y,
-                          loc.location_in_blk.x,
-                          loc.location_in_blk.y,
-                          blocks->states[idx]);
+        grd_propagate_column(blocks, loc.location_in_grid.x, loc.location_in_grid.y, 
+                            loc.location_in_blk.x, loc.location_in_blk.y, blocks->states[idx]);
+        printf("after grid col\n"); 
+        grd_print(NULL, blocks);
 
-        grd_propagate_column(blocks,loc.location_in_grid.x,
-                          loc.location_in_grid.y,
-                          loc.location_in_blk.x,
-                          loc.location_in_blk.y,
-                          blocks->states[idx]);                 
-        // grd_propagate_column(blocks,1,0,blocks->states[idx]);
+        grd_propagate_row(blocks, loc.location_in_grid.x, loc.location_in_grid.y, 
+                            loc.location_in_blk.x, loc.location_in_blk.y, blocks->states[idx]);
+        
+        printf("after grid row \n"); 
+        grd_print(NULL, blocks);
+
+        if(grd_check_error_in_column(blocks, loc.location_in_blk.x, loc.location_in_grid.x) == false ){
+            printf("encountered another state with entropy one with the same case\n"); 
+            break; 
+        }; 
+
+
+//
+        // Get the row and column of the state that collapsed
+
 
         // Check Error
         //  if not update_domaine (D,x,y):
@@ -91,18 +101,18 @@ grd_print(NULL, blocks);
         
 
         iteration += 1;
-        if (iteration == 1 ){
+        if (iteration == 5 ){
             printf("iteration 5\n"); 
             break;
         }
-        // if (!changed)
-        // {
-        //printf("inside !changed\n"); 
-        //     break;
-//
-        // }
+ 
+         //}
     }
+    //print the last state 
+    printf("last state: \n"); 
+    grd_print(NULL, blocks); 
+
     // return D
     return true;
 }
-}
+

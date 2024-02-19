@@ -199,8 +199,12 @@ wfc_load(uint64_t seed, const char *path)
         printf("calculate index %u\n ", get_thread_glob_idx(ret, gx, gy, x, y)); 
         printf("grd_propogate_col\n"); 
         grd_print(NULL, ret);
-        //grd_propagate_row(ret, gx, gy, x, y, collapsed);
-        if (grd_check_error_in_column(ret, gx)) {
+        grd_propagate_row(ret, gx, gy, x, y, val);
+        printf("grd_propogate_row\n"); 
+        grd_print(NULL, ret);
+
+        
+        if (grd_check_error_in_column(ret, x, gx) == false) {
             fprintf(stderr, "wrong propagation in block (%u, %u) from (%u, %u)\n", gx, gy, x, y);
             exit(EXIT_FAILURE);
         }

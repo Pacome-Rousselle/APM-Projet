@@ -12,13 +12,13 @@ typedef struct {
     uint32_t x, y;
 } vec2;
 
+//ça casse alignement
 typedef struct {
-    vec2 location_in_blk;
-    vec2 location_in_grid;
-    uint8_t entropy;
-
-    uint8_t _1;
-    uint16_t _2;
+    vec2 location_in_blk; //64
+    vec2 location_in_grid; //64
+    uint8_t entropy;    //8
+    uint8_t _1;         //8
+    uint16_t _2;        //16
 } entropy_location;
 
 typedef struct {
