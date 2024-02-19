@@ -248,7 +248,7 @@ void grd_print(FILE *const file, const wfc_blocks_ptr block){
                 fprintf(fp, "|");
                 for(uint32_t j = 0; j < bs; j++){
                     const uint64_t collapsed = *blk_at(block, ii,i,jj,j);
-                    printf("idx: %d ", get_thread_glob_idx(block, ii, i, jj, j)); 
+                    // printf("idx: %d ", get_thread_glob_idx(block, ii, i, jj, j)); 
                     printBinary2(collapsed);
                     fprintf(fp, " |", collapsed);
                 }
