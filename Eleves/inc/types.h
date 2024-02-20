@@ -39,7 +39,7 @@ typedef struct {
     const char *const output_folder;
     seeds_list *restrict seeds;
     const uint64_t parallel;
-    bool (*const solver)(wfc_blocks_ptr);
+    bool (*const solver)(wfc_blocks_ptr, uint64_t);
 } wfc_args;
 
 typedef struct {

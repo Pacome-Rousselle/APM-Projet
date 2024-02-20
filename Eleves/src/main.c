@@ -42,7 +42,7 @@ main(int argc, char **argv)
         }
 
         wfc_clone_into(&blocks, next_seed, init);
-        const bool solved = args.solver(blocks);
+        const bool solved = args.solver(blocks,next_seed);
         printf("Atomic 1\n");
            
         __atomic_add_fetch(iterations_ptr, 1, __ATOMIC_SEQ_CST);

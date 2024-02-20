@@ -66,9 +66,10 @@ uint8_t entropy_compute(uint64_t);
 uint64_t entropy_collapse_state(uint64_t, uint32_t, uint32_t, uint32_t, uint32_t, uint64_t, uint64_t);
 
 // Propagation functions
-void blk_propagate(wfc_blocks_ptr, uint32_t, uint32_t, uint64_t);
-void grd_propagate_column(wfc_blocks_ptr, uint32_t, uint32_t, uint32_t, uint32_t, uint64_t);
-void grd_propagate_row(wfc_blocks_ptr, uint32_t, uint32_t, uint32_t, uint32_t, uint64_t);
+void blk_propagate(wfc_blocks_ptr, uint32_t, uint32_t, uint64_t, uint64_t*, int*);
+void grd_propagate_column(wfc_blocks_ptr, uint32_t, uint32_t, uint32_t, uint32_t, uint64_t, uint64_t*, int*);
+void grd_propagate_row(wfc_blocks_ptr, uint32_t, uint32_t, uint32_t, uint32_t, uint64_t, uint64_t*, int*);
+bool propagate_all(wfc_blocks_ptr blocks, uint32_t gx, uint32_t gy, uint32_t x, uint32_t y, uint64_t collapsed);
 
 // Check functions
 bool grd_check_error_in_row(wfc_blocks_ptr blocks, uint32_t gx, uint32_t x);
@@ -77,9 +78,9 @@ bool grd_check_error_in_blk(wfc_blocks_ptr blocks, uint32_t gx, uint32_t gy, uin
 
 
 // Solvers
-bool solve_cpu(wfc_blocks_ptr);
-bool solve_openmp(wfc_blocks_ptr);
-bool solve_target(wfc_blocks_ptr);
+bool solve_cpu(wfc_blocks_ptr, uint64_t seed);
+bool solve_openmp(wfc_blocks_ptr, uint64_t seed);
+bool solve_target(wfc_blocks_ptr, uint64_t seed);
 #if defined(WFC_CUDA)
 bool solve_cuda(wfc_blocks_ptr);
 #endif
