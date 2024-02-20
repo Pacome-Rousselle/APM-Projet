@@ -192,14 +192,14 @@ wfc_load(uint64_t seed, const char *path)
         *blk_at(ret, gx, gy, x, y) = val;
         printf("in load_wfc function\n"); 
         grd_print(NULL, ret); 
-        blk_propagate(ret, gx, gy, val);
+        blk_propagate(ret, gx, gy, val, NULL, NULL);
         printf("blk_propagate\n");
         grd_print(NULL, ret);
-        grd_propagate_column(ret, gx, gy, x, y, val);
+        grd_propagate_column(ret, gx, gy, x, y, val,NULL, NULL);
         printf("calculate index %u\n ", get_thread_glob_idx(ret, gx, gy, x, y)); 
         printf("grd_propogate_col\n"); 
         grd_print(NULL, ret);
-        grd_propagate_row(ret, gx, gy, x, y, val);
+        grd_propagate_row(ret, gx, gy, x, y, val,NULL, NULL);
         printf("grd_propogate_row\n"); 
         grd_print(NULL, ret);
 

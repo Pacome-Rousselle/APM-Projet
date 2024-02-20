@@ -17,7 +17,7 @@ main(int argc, char **argv)
     wfc_args args             = wfc_parse_args(argc, argv);
     const wfc_blocks_ptr init = wfc_load(0, args.data_file);
 
-    bool quit                = false;
+    int quit                 = 0;
     uint64_t iterations      = 0;
     wfc_blocks_ptr blocks    = NULL;
     pthread_mutex_t seed_mtx = PTHREAD_MUTEX_INITIALIZER;
@@ -32,20 +32,21 @@ main(int argc, char **argv)
         pthread_mutex_lock(&seed_mtx);
         uint64_t next_seed       = 0;
         const bool has_next_seed = try_next_seed(&args.seeds, &next_seed);
+        printf("Seed : %d\n",next_seed);
         pthread_mutex_unlock(&seed_mtx);
 
         if (!has_next_seed) {
             __atomic_fetch_or(quit_ptr, (int)1, __ATOMIC_SEQ_CST);
             fprintf(stderr, "no more seed to try\n");
-            printf("I'm out\n");
             break;
         }
 
         wfc_clone_into(&blocks, next_seed, init);
         const bool solved = args.solver(blocks);
         printf("Atomic 1\n");
+           
         __atomic_add_fetch(iterations_ptr, 1, __ATOMIC_SEQ_CST);
-
+ 
         if (solved && args.output_folder != NULL) {
             printf("Atomic 2\n");
             __atomic_fetch_or(quit_ptr, (int)1, __ATOMIC_SEQ_CST);
@@ -62,7 +63,7 @@ main(int argc, char **argv)
 
         else if (!*quit_ptr) {
             printf("Atomic 4\n");
-            fprintf(stdout, "\r%.2f%% -> %.2fs",
+            fprintf(stdout, "\r%.2f%% -> %.2fs\n",
                     ((double)(*iterations_ptr) / (double)(max_iterations)) * 100.0,
                     omp_get_wtime() - start);
         }

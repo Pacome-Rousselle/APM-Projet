@@ -72,9 +72,9 @@ wfc_clone_into(wfc_blocks_ptr *const restrict ret_ptr, uint64_t seed, const wfc_
 
     memcpy(ret, blocks, size);
     // ret->states[0] = seed;
-
-    uint64_t val = convertToBits(seed);
-    ret->states[0] = val;
+    
+    // uint64_t val = convertToBits(seed);
+    // ret->states[0] = val;
 
     *ret_ptr       = ret;
 }
@@ -112,6 +112,7 @@ blk_filter_mask_for_column(wfc_blocks_ptr blocks,
                            uint32_t gy, uint32_t y,
                            uint64_t collapsed)
 {
+    
     return 0;
 }
 
@@ -252,7 +253,7 @@ grd_check_error_in_blk(wfc_blocks_ptr blocks, uint32_t gx, uint32_t gy, uint32_t
 void
 blk_propagate(wfc_blocks_ptr blocks,
               uint32_t gx, uint32_t gy,
-              uint64_t collapsed)
+              uint64_t collapsed, uint64_t *pending, int *next)
 {
     int idx;
     uint64_t bc;
@@ -260,14 +261,15 @@ blk_propagate(wfc_blocks_ptr blocks,
         for (int j = 0; j < blocks->block_side; j++) {
             idx = get_thread_glob_idx(blocks, gx, gy, i, j);
 
-            // Bit wise AND (&=) with inverse of collapsed (~)
-            //(all 1s except the state at 0 we want to collapse)
-
-            bc = bitfield_count(blocks->states[idx]);
-            //printf("bc = %lu \n", bc);
-            if (bc != 1) //if this is not present it sets the block to zero but if in a for casse les perfs;
-                         //what to do?
+            if (bitfield_count(blocks->states[idx]) != 1) 
+            {
                 blocks->states[idx] &= ~(collapsed);
+                if(entropy_compute(blocks->states[idx]) == 1)
+                {
+                    pending[*next] = idx;
+                    (*next)++;
+                }
+            }
         }
 }
 
@@ -276,7 +278,7 @@ blk_propagate(wfc_blocks_ptr blocks,
 void
 grd_propagate_row(wfc_blocks_ptr blocks,
                   uint32_t gx, uint32_t gy, uint32_t x, uint32_t y,
-                  uint64_t collapsed)
+                  uint64_t collapsed, uint64_t* pending, int *next)
 {
     //propopgate only on the column
     //stay in the same row
@@ -287,16 +289,15 @@ grd_propagate_row(wfc_blocks_ptr blocks,
         for (int gyy = 0; gyy < blocks->grid_side; gyy++) {
             //if( gyy != gy){
             idx = get_thread_glob_idx(blocks, gx, gyy, x, j);
-
-            // Bit wise AND (&=) with inverse of collapsed (~)
-            //(all 1s except the state at 0 we want to collapse)
-
-            bc = bitfield_count(blocks->states[idx]);
-            //printf("bc = %lu \n", bc);
-            if (bc != 1) //if this is not present it sets the block to zero but if in a for casse les perfs;
-                         //what to do?
+            if (bitfield_count(blocks->states[idx]) != 1) 
+            {
                 blocks->states[idx] &= ~(collapsed);
-            //}
+                if(entropy_compute(blocks->states[idx]) == 1)
+                {
+                    pending[*next] = idx;
+                    (*next)++;
+                }
+            }
         }
     // return 0;
 }
@@ -305,34 +306,100 @@ grd_propagate_row(wfc_blocks_ptr blocks,
 // gy and y (grid and blocks row) are fixed
 void
 grd_propagate_column(wfc_blocks_ptr blocks, uint32_t gx, uint32_t gy,
-                     uint32_t x, uint32_t y, uint64_t collapsed)
+                     uint32_t x, uint32_t y, uint64_t collapsed, uint64_t* pending, int *next)
 {
     //stay in the same column
     //change the rows
     int idx;
-    uint8_t bc;
 
     for (int i = 0; i < blocks->block_side; i++)
         for (int gxx = 0; gxx < blocks->grid_side; gxx++) {
             idx = get_thread_glob_idx(blocks, gxx, gy, i, y);
-            // Bit wise AND (&=) with inverse of collapsed (~)
-            //(all 1s except the state at 0 we want to collapse)
-            bc = bitfield_count(blocks->states[idx]);
-            //to remove once we resolve the thing with minimum entropy
-            if (bc != 1) //if this is not present it sets the block to zero but if in a for casse les perfs;
-                         //what to do?
+            if (bitfield_count(blocks->states[idx]) != 1) 
+            {
                 blocks->states[idx] &= ~(collapsed);
+                if(entropy_compute(blocks->states[idx]) == 1)
+                {
+                    pending[*next] = idx;
+                    (*next)++;
+                }
+            }
         }
-    //return 0;
 }
 
-void
-all_propagate(wfc_blocks_ptr blocks, uint32_t gx, uint32_t gy, 
+bool
+propagate_all(wfc_blocks_ptr blocks, uint32_t gx, uint32_t gy, 
               uint32_t x, uint32_t y, uint64_t collapsed)
 {
-    blk_propagate(blocks,gx,gy,collapsed);
-    grd_propagate_column(blocks,gx,gy,x,y,collapsed);
-    grd_propagate_row(blocks,gx,gy,x,y,collapsed);
+    size_t size = 2*(blocks->grid_side*blocks->block_side-1); // Row and Col
+    size += blocks->block_side*blocks->block_side-1; // Block
+
+    uint64_t *pending = calloc(size,sizeof(uint64_t));
+    int next = 0;
+    // BLOCK
+    blk_propagate(blocks,gx,gy,collapsed,pending,&next);
+
+    printf("After block\n");
+    grd_print(NULL, blocks);
+
+    if(grd_check_error_in_blk(blocks, gx,gy,x,y) == false ){
+            printf("encountered another state same value in same block\n"); 
+            return false; 
+        };  
+
+    // Column
+    grd_propagate_column(blocks,gx,gy,x,y,collapsed,pending,&next);
+
+    printf("After column\n");
+    grd_print(NULL, blocks);
+
+    if(grd_check_error_in_column(blocks, gy,y) == false ){
+            printf("encountered another state same value in same column\n"); 
+            return false; 
+        };
+
+    // Row
+    grd_propagate_row(blocks,gx,gy,x,y,collapsed,pending,&next);
+    
+    printf("After row\n");
+    grd_print(NULL, blocks);
+
+    if(grd_check_error_in_row(blocks, gx,x) == false ){
+            printf("encountered another state same value in same row\n"); 
+            return false; 
+        };
+
+    // Chain reaction
+    int gxx, gyy, xx, yy, new_idx;
+
+    for(int i = 0; i<next; i++)
+    {
+        new_idx = pending[i];
+        printf("In pending %d\n",new_idx);
+        yy = new_idx%(blocks->block_side*blocks->block_side);
+        xx = new_idx/(blocks->block_side*blocks->block_side);
+        printf("%d/%d = %d\n",new_idx,blocks->block_side*blocks->block_side, xx);
+        gyy = xx%(blocks->grid_side);
+        printf("%d modulo %d = %d\n",xx,blocks->grid_side, gyy);
+        gxx = xx/(blocks->grid_side);
+
+        int jsp = gxx*(blocks->grid_side)+gyy;
+
+        int jsp2 = jsp*(blocks->block_side*blocks->block_side);
+
+        int jsp3 = new_idx - jsp2;
+
+        yy = jsp3%(blocks->grid_side);
+        xx = jsp3/(blocks->grid_side);
+
+        printf("%d %d %d %d\n", gxx, gyy, xx, yy);
+        printf("%d*%d+%d = %d*%d+%d = %d\n",gxx,blocks->grid_side,gyy,xx,blocks->block_side*blocks->block_side,yy,new_idx);
+        propagate_all(blocks,gxx,gyy,xx,yy,blocks->states[new_idx]);
+
+    }
+    
+
+    return true;
 }
 
 // Printing functions
