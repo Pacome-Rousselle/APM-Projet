@@ -262,15 +262,32 @@ wfc_save_into(const wfc_blocks_ptr blocks, const char data[], const char folder[
         exit(EXIT_FAILURE);
     }
 
-    const uint64_t starts = wfc_control_states_count(blocks->grid_side, blocks->block_side),
-                   ends   = blocks->grid_side * blocks->grid_side * blocks->block_side *
+    // const uint64_t starts = wfc_control_states_count(blocks->grid_side, blocks->block_side),
+    const uint64_t  ends  = blocks->grid_side * blocks->grid_side * blocks->block_side *
                           blocks->block_side;
-    for (uint64_t i = 0; i < ends; i += 1) {
-        if (fprintf(f, "%lu\n", blocks->states[starts + i]) < 0) {
-            fprintf(stderr, "failed to write: %s\n", strerror(errno));
-            exit(EXIT_FAILURE);
-        }
-    }
+    uint8_t gs = blocks->grid_side;
+    uint8_t bs = blocks->block_side;
+
+        for (uint32_t ii = 0; ii < gs; ii++)
+            for (uint32_t jj = 0; jj < bs; jj++){
+                    for (uint32_t i = 0; i < gs; i++) 
+                        for (uint32_t j = 0; j < bs; j++){
+                            int pow = 1;
+                            int number = *blk_at(blocks, ii, i, jj, j);
+                            while (number != 1)
+                            {
+                                number/=2;
+                                if(number < 1) fprintf(stderr, "bad result in the grid: %s\n", strerror(errno));
+                                pow++;
+                            }
+                            if (fprintf(f, "%d ", pow) < 0) {
+                                fprintf(stderr, "failed to write: %s\n", strerror(errno));
+                                exit(EXIT_FAILURE);
+                            }
+                        }
+                    fprintf(f, "\n");
+                }
+                    
 
     fprintf(stdout, "saved successfully %lu states\n", ends);
     fclose(f);
