@@ -288,7 +288,6 @@ dev_grd_propagate_column(wfc_blocks_ptr blocks, uint32_t gx, uint32_t gy,
                 
 }
 
-
 __global__ void
 dev_grd_propagate_row(wfc_blocks_ptr blocks,
                   uint32_t gx, uint32_t gy, uint32_t x, uint32_t y,
@@ -311,7 +310,7 @@ dev_grd_propagate_row(wfc_blocks_ptr blocks,
 
     //dont do if on a different row 
 
-    //dont do if the grid is the asked grid 
+    //dont do if the gridcudamemcpy is the asked grid 
     if (th_idx == needed_grid_index){ //we have already propagated on this column in block
         return; 
     }
@@ -330,4 +329,272 @@ if(our_grid_Idx == gx ){
         }
 }
     // return 0;
+}
+
+__device__ void                                 //given grid indexes 
+dev_dev_grd_propagate_column(wfc_blocks_ptr blocks, uint32_t gx, uint32_t gy,
+                     uint32_t x, uint32_t y, uint64_t collapsed)
+{
+    //each thread gets a block 
+    //for grid propopagate column it means that each thread will update the the its rows on that column 
+    //based on the given state 
+    //but not every grid is going to do this! only he grids that are on the same column 
+    //as the given grid is going to do this!! 
+
+    int block_size   = blocks->block_side;
+    int grid_size    = blocks->grid_side;
+    int our_grid_Idx = blockIdx.x / grid_size;
+    int our_grid_Idy = blockIdx.x % grid_size;
+    int row   = blockIdx.y * blockDim.y + threadIdx.y; 
+    int col   = blockIdx.x * blockDim.x + threadIdx.x; 
+    int width = gridDim.x * blockDim.x;                
+    int th_idx_arr_location = (row * width + col) * block_size * block_size; 
+    int th_idx              = row * width + col;
+    int grd_size_mod = th_idx % grid_size; //=> will determine in which block we are
+    int needed_grid_index = gx * grid_size + gy; 
+    int needed_grid_index_mod = needed_grid_index% grid_size; 
+    if (grd_size_mod !=  needed_grid_index_mod){ //if not on the same column don't do somethin
+        return; 
+    }
+
+    if (th_idx == needed_grid_index){ //we have already propagated on this column in block
+        return; 
+    }
+    int idx;
+    uint8_t bc;
+
+    for (int i = 0; i < blocks->block_side; i++)
+    {
+        //for (int gxx = 0; gxx < blocks->grid_side; gxx++) { //dont traverse the grid side because each thread has a block, it does it naturally
+             idx = th_idx_arr_location + i* block_size  + y; 
+            dev_bitfield_count(blocks->states[idx], &bc);
+            if (bc != 1) 
+                blocks->states[idx] &= ~(collapsed);
+    }
+                
+}
+
+__device__ void
+dev_dev_blk_propagate(wfc_blocks_ptr blocks,
+                  uint32_t gx, uint32_t gy,
+                  uint64_t collapsed)
+{
+    
+    /*if the thread is not owner the block with the minimum entropy it is not going to propagate*/
+    int block_size   = blocks->block_side;
+    int grid_size    = blocks->grid_side;
+    int our_grid_Idx = blockIdx.x / grid_size;
+    int our_grid_Idy = blockIdx.x % grid_size;
+    if (our_grid_Idx != gx || our_grid_Idy != gy) {
+        return; //do nothing and return
+        //or should i synchronise the threads and they ar egoing to wiat for the executing thread?
+    }
+    int row   = blockIdx.y * blockDim.y + threadIdx.y; 
+    int col   = blockIdx.x * blockDim.x + threadIdx.x; 
+    int width = gridDim.x * blockDim.x;                
+
+    //this gives the number of the case that thread starts to read from
+    int th_idx_arr_location = (row * width + col) * block_size * block_size; 
+    int th_idx              = row * width + col;
+    int idx;
+    uint8_t bc;
+    for (int i = 0; i < blocks->block_side; i++)
+        for (int j = 0; j < blocks->block_side; j++) {
+            idx = th_idx_arr_location + i*blocks->block_side + j;
+            dev_bitfield_count(blocks->states[idx], &bc);
+            
+            if (bc != 1) 
+                blocks->states[idx] &= ~(collapsed);
+        }
+}
+
+
+__device__ void
+dev_dev_grd_propagate_row(wfc_blocks_ptr blocks,
+                  uint32_t gx, uint32_t gy, uint32_t x, uint32_t y,
+                  uint64_t collapsed)
+{
+    int block_size   = blocks->block_side;
+    int grid_size    = blocks->grid_side;
+    int our_grid_Idx = blockIdx.x / grid_size; //rox location in the grid
+    int our_grid_Idy = blockIdx.x % grid_size; //col location in the grid 
+    int row   = blockIdx.y * blockDim.y + threadIdx.y; 
+    int col   = blockIdx.x * blockDim.x + threadIdx.x; 
+    int width = gridDim.x * blockDim.x;                
+    int th_idx_arr_location = (row * width + col) * block_size * block_size; 
+    int th_idx              = row * width + col;
+    int grd_size_mod = th_idx % grid_size; //=> will determine in which block we are
+    int needed_grid_index = gx * grid_size + gy; 
+    int needed_grid_index_mod = needed_grid_index% grid_size; 
+    int idx;
+    uint8_t bc;
+
+    //dont do if on a different row 
+
+    //dont do if the gridcudamemcpy is the asked grid 
+    if (th_idx == needed_grid_index){ //we have already propagated on this column in block
+        return; 
+    }
+
+__device__ void 
+set_mask(masks *my_mask, uint64_t col_index, uint64_t row_index, uint64_t block_index, uint64_t collapsed)
+{
+    
+}
+//do only if on the same row 
+if(our_grid_Idx == gx ){ 
+
+
+    for (int j = 0; j < blocks->block_side; j++)
+        {
+           
+            idx = th_idx_arr_location + x* block_size  + j; 
+             dev_bitfield_count(blocks->states[idx], &bc);
+            if (bc != 1)
+                blocks->states[idx] &= ~(collapsed);
+        }
+}
+    // return 0;
+}
+
+
+__global__ void global_propagate_all(){
+
+}
+
+
+
+
+
+
+__device__ int factorial(int n) {
+    if (n == 0)
+        return 1;
+    else
+        return n * factorial(n - 1);
+}
+
+__global__ void compute_factorial(int n, int* result) {
+    *result = factorial(n);
+}
+
+
+
+
+__global__ void
+dev_grd_check_error_in_row(wfc_blocks_ptr blocks, uint32_t gx, uint32_t x, int* result)
+{
+    printf("in row error checking \n"); 
+    int idx;
+    int idx_other;
+    uint64_t cell_state;
+    uint8_t cell_entropy;
+
+    uint8_t other_cell_entropy;
+    uint64_t other_cell_state;
+
+    int block_size   = blocks->block_side;
+    int grid_size    = blocks->grid_side;
+    int our_grid_Idx = blockIdx.x / grid_size; //rox location in the grid
+    int our_grid_Idy = blockIdx.x % grid_size; //col location in the grid 
+    int row   = blockIdx.y * blockDim.y + threadIdx.y; 
+    int col   = blockIdx.x * blockDim.x + threadIdx.x; 
+    int width = gridDim.x * blockDim.x;                
+    int th_idx_arr_location = (row * width + col) * block_size * block_size; 
+    int th_idx              = row * width + col;
+    int grd_size_mod = th_idx % grid_size; //=> will determine in which block we are
+
+
+/*if i am not in the concerned row i wont check it */
+if (our_grid_Idx != gx){
+    return; 
+}
+*result = 0; 
+
+   //the structure is going to be different 
+   //each thread will be responsible of a row 
+   //if not on the same row they wont be looking for an error 
+   
+}
+
+__global__ void 
+dev_grd_check_error_in_column(wfc_blocks_ptr blocks, uint32_t gy, uint32_t y, int* result)
+{
+    printf("in col error checking \n"); 
+    int idx;
+    int idx_other;
+    uint64_t cell_state;
+    uint8_t cell_entropy;
+
+    uint8_t other_cell_entropy;
+    uint64_t other_cell_state;
+ int block_size   = blocks->block_side;
+    int grid_size    = blocks->grid_side;
+    int our_grid_Idx = blockIdx.x / grid_size; //rox location in the grid
+    int our_grid_Idy = blockIdx.x % grid_size; //col location in the grid 
+    int row   = blockIdx.y * blockDim.y + threadIdx.y; 
+    int col   = blockIdx.x * blockDim.x + threadIdx.x; 
+    int width = gridDim.x * blockDim.x;                
+    int th_idx_arr_location = (row * width + col) * block_size * block_size; 
+    int th_idx              = row * width + col;
+    int grd_size_mod = th_idx % grid_size; //=> will determine in which block we are
+
+
+//the structure is going to be diffeerent since we a thread hould know all the values on that column in order to be able to check it! 
+    
+}
+
+
+__global__ void 
+dev_grd_check_error_in_blk(wfc_blocks_ptr blocks, uint32_t gx, uint32_t gy, uint32_t x, uint32_t y, int* result){
+/*int will be 0 or one, if it's zero it's succesfull, if not it is failed => encountered another state*/
+/*we want them to find the error at the same place as cpu, therefore i am going to retrieve these values to
+so that i can get to print them */
+   int block_size   = blocks->block_side;
+    int grid_size    = blocks->grid_side;
+    int our_grid_Idx = blockIdx.x / grid_size; //rox location in the grid
+    int our_grid_Idy = blockIdx.x % grid_size; //col location in the grid 
+    int row   = blockIdx.y * blockDim.y + threadIdx.y; 
+    int col   = blockIdx.x * blockDim.x + threadIdx.x; 
+    int width = gridDim.x * blockDim.x;                
+    int th_idx_arr_location = (row * width + col) * block_size * block_size; 
+    int th_idx              = row * width + col;
+    int grd_size_mod = th_idx % grid_size; //=> will determine in which block we are
+    int needed_grid_index = gx * grid_size + gy; 
+    int needed_grid_index_mod = needed_grid_index% grid_size; 
+
+    /*if i am not the concerned block i wont check it*/
+      if (th_idx != needed_grid_index){ 
+        return; 
+    }
+    /*there is only one concerned blockn therefore only one pointer is fine*/
+    (*result) = 0; 
+
+
+    int idx;
+    int idx_other;
+    uint64_t cell_state;
+    uint8_t cell_entropy;
+
+    uint8_t other_cell_entropy;
+    uint64_t other_cell_state;
+
+    /*for (int i = 0; i < blocks->block_side; i++)
+        for (int j = 0; j < blocks->block_side; j++) {
+            idx          = th_idx_arr_location + i * block_size + j; 
+            cell_state   = blocks->states[idx];
+            cell_entropy = entropy_compute(cell_state);
+
+            if (cell_entropy == 1)
+                for (int ii = 0; ii < blocks->block_side; ii++)
+                    for (int jj = 0; jj < blocks->block_side; jj++) {
+                        idx_other = th_idx_arr_location + ii * block_size + jj; 
+                        other_cell_state = blocks->states[idx_other];
+                        other_cell_entropy = entropy_compute(blocks->states[idx_other]);
+
+                        if (idx != idx_other && other_cell_entropy == 1 && other_cell_state == cell_state)  
+                            *result = 1;
+                    }   
+        }*/
+   
 }

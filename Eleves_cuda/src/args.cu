@@ -1,4 +1,4 @@
-#define _GNU_SOURCE
+//#define _GNU_SOURCE
 
 #include "wfc.h"
 
@@ -205,7 +205,7 @@ wfc_parse_args(int argc, char **argv)
     seeds_list *restrict seeds     = NULL;
     const char *output             = NULL;
     uint64_t parallel              = 1;
-    bool (*solver)(wfc_blocks_ptr) = NULL;
+    bool (*solver)(wfc_blocks_ptr, uint64_t, masks*) = NULL;
     char *end                      = NULL;
 
     while ((opt = getopt(argc, argv, "hs:o:l:p:")) != -1) {

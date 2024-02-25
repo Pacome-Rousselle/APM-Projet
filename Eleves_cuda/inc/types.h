@@ -33,16 +33,40 @@ typedef struct {
 } wfc_blocks;
 
 typedef wfc_blocks *wfc_blocks_ptr;
+/*MASKS EXP: 
+each of them willbe starting as all the bits set to 1 
+then wen a state becomes defined case it will put the related mask to zero 
+*/
+
+
+typedef struct{
+    uint64_t* column_masks;  //gridside * blockside numbe rof elements they hold 
+    uint64_t* row_masks; 
+    uint64_t* block_masks; 
+    //maybe at least this will be aligned :( 
+    uint64_t safe_exit;  //if it is zero it means that mask setting or whatever we are in is successfull 
+                            //if it is not zero, we are going to try a find a way to exit and return to the main 
+                                //try new seed or jsut exit faiulure 
+}masks; 
+
+typedef masks *masks_ptr; 
+/*had to change the signature of the load_save function to retrieve the masks to the main*/
+typedef struct {
+    masks* return_masks; 
+    wfc_blocks* return_blocks;
+    
+}wfc_load_returns; 
 
 typedef struct {
     const char *const data_file;
     const char *const output_folder;
     seeds_list *restrict seeds;
     const uint64_t parallel;
-    bool (*const solver)(wfc_blocks_ptr);
+    bool (*const solver)(wfc_blocks_ptr, uint64_t, masks*);
 } wfc_args;
 
 typedef struct {
     const char *const name;
-    bool (*function)(wfc_blocks_ptr);
+    bool (*function)(wfc_blocks_ptr, uint64_t, masks*);
+     
 } wfc_solver;
