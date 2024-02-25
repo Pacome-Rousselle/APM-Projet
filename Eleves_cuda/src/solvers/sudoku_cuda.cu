@@ -18,21 +18,17 @@ sudoku is a carree latin :nah it seems like there is no relation but i am not su
 #include "sudoku_cuda.h" //functions to be called when inside gpu are defined here
 
 bool
-solve_cuda(wfc_blocks_ptr blocks, uint64_t seed, masks* my_masks)
+solve_cuda(wfc_blocks_ptr blocks, uint64_t seed, masks *my_masks)
 {
     ////printf("\n");
     printf("ON SOLVER CUDA\n");
+    printf("entry states \n"); 
+    grd_print(NULL, blocks); 
     /*first I'll do the sync version*/
     /*then we'lls ee the async*/
-   // const uint64_t seed = blocks->states[0]; //with new version we are getting this from outside ??
-    uint64_t iteration  = 0;
-    // Set seed
-    //const uint64_t seed = blocks->states[0];
-    ////printf("SEED%lu\n", seed);
-    //struct {
-    //    uint32_t gy, x, y, _1;
-    //    uint64_t state;
-    //} row_changes[blocks->grid_side];
+    // const uint64_t seed = blocks->states[0]; //with new version we are getting this from outside ??
+    uint64_t iteration = 0;
+    
 
     entropy_location loc, test;
     loc.entropy = UINT8_MAX;
@@ -55,9 +51,9 @@ solve_cuda(wfc_blocks_ptr blocks, uint64_t seed, masks* my_masks)
             }
             */
 
-uint32_t col_idx  ;
-uint32_t row_idx  ;
-uint32_t block_idx;
+    uint32_t col_idx;
+    uint32_t row_idx;
+    uint32_t block_idx;
     //create an array of entropy location => gonna do that for each iteration so dont forgetto free
     //to be or not to be a malloc host ?
 
@@ -73,82 +69,95 @@ uint32_t block_idx;
                           (grid_size * grid_size * block_size * block_size * sizeof(uint64_t)) +
                           sizeof(wfc_blocks);
 
+    wfc_blocks_ptr h_blocks         = NULL;
+    wfc_blocks_ptr h_blocks_changed = NULL;
 
-        wfc_blocks_ptr h_blocks         = NULL;
-        wfc_blocks_ptr h_blocks_changed = NULL;
+    //allocate the data space on host and pin it
+    checkCudaErrors(cudaMallocHost((void **)&h_blocks, size));
+    //initialize the pinned data space
+    memcpy(h_blocks, blocks, size);
+    //
+    wfc_blocks_ptr d_blocks;
+    //allocate space on the device
+    checkCudaErrors(cudaMalloc((void **)&d_blocks, size)); //mempitch => is it padded?
+    //copy the pinned data from the host to device
+    checkCudaErrors(cudaMemcpy(d_blocks, h_blocks, size, cudaMemcpyHostToDevice));
+    entropy_location *dev_entropy_location_per_thread = NULL;
+    //it will stock the return fromt the device
+    entropy_location *dev_ret_entropy_location_per_thread = NULL;
+    dev_ret_entropy_location_per_thread                   = NULL; //(entropy_location *)malloc(sizeof(entropy_location) * nb_threads);
 
-        //allocate the data space on host and pin it
-        checkCudaErrors(cudaMallocHost((void **)&h_blocks, size));
-        //initialize the pinned data space
-        memcpy(h_blocks, blocks, size); 
-        //
-        wfc_blocks_ptr d_blocks;
-        //allocate space on the device
-        checkCudaErrors(cudaMalloc((void **)&d_blocks, size)); //mempitch => is it padded? 
-        //copy the pinned data from the host to device
-        checkCudaErrors(cudaMemcpy(d_blocks, h_blocks, size, cudaMemcpyHostToDevice)); 
-         entropy_location *dev_entropy_location_per_thread = NULL;
-        //it will stock the return fromt the device
-        entropy_location *dev_ret_entropy_location_per_thread = NULL;
-        dev_ret_entropy_location_per_thread                   = NULL; //(entropy_location *)malloc(sizeof(entropy_location) * nb_threads);
+    dev_entropy_location_per_thread = (entropy_location *)malloc(sizeof(entropy_location) * nb_threads);
 
-        dev_entropy_location_per_thread = (entropy_location *)malloc(sizeof(entropy_location) * nb_threads);
-    
-        //initialize it =>making sure
-        for (int i = 0; i < nb_threads; i++) {
-            dev_entropy_location_per_thread[i].entropy          = UINT8_MAX;
-            dev_entropy_location_per_thread[i].location_in_blk  = { 0, 0 };
-            dev_entropy_location_per_thread[i].location_in_grid = { 0, 0 };
-            dev_entropy_location_per_thread[i]._1               = 0;
-            dev_entropy_location_per_thread[i]._2               = 0;
-        }
+    //initialize it =>making sure
+    for (int i = 0; i < nb_threads; i++) {
+        dev_entropy_location_per_thread[i].entropy          = UINT8_MAX;
+        dev_entropy_location_per_thread[i].location_in_blk  = { 0, 0 };
+        dev_entropy_location_per_thread[i].location_in_grid = { 0, 0 };
+        dev_entropy_location_per_thread[i]._1               = 0;
+        dev_entropy_location_per_thread[i]._2               = 0;
+    }
 
-         //allocate space in the gpu
-        checkCudaErrors(cudaMalloc((void **)&dev_ret_entropy_location_per_thread, sizeof(entropy_location) * nb_threads)); //get this outside of forever too ? because it will be overwritten each time
-         //initialize the allocated space in the gpu
-        checkCudaErrors(cudaMemcpy(dev_ret_entropy_location_per_thread, dev_entropy_location_per_thread, sizeof(entropy_location) * nb_threads, cudaMemcpyHostToDevice));
-        
-masks* dev_masks;
-cudaMalloc((void**)&dev_masks, sizeof(masks));
+    //allocate space in the gpu
+    checkCudaErrors(cudaMalloc((void **)&dev_ret_entropy_location_per_thread, sizeof(entropy_location) * nb_threads)); //get this outside of forever too ? because it will be overwritten each time
+                                                                                                                       //initialize the allocated space in the gpu
+    checkCudaErrors(cudaMemcpy(dev_ret_entropy_location_per_thread, dev_entropy_location_per_thread, sizeof(entropy_location) * nb_threads, cudaMemcpyHostToDevice));
 
-uint64_t* column_masks;
-cudaMalloc((void**)&column_masks, sizeof(uint64_t) * blocks->block_side * blocks->grid_side); //column masks will be allocated on the host 
-//but will hold the adress returning from the device 
-cudaMemcpy(&(dev_masks->column_masks), &column_masks, sizeof(uint64_t*), cudaMemcpyHostToDevice);
-//so  here when we make host to device, we are sending the memory location obtained from the device to the device again so that it will know the adress of it 
-uint64_t* row_masks;
-cudaMalloc((void**)&row_masks, sizeof(uint64_t) * blocks->block_side * blocks->grid_side);
-cudaMemcpy(&(dev_masks->row_masks), &row_masks, sizeof(uint64_t*), cudaMemcpyHostToDevice);
-uint64_t* block_masks;
-cudaMalloc((void**)&block_masks, sizeof(uint64_t) * blocks->grid_side * blocks->grid_side);
-cudaMemcpy(&(dev_masks->block_masks), &block_masks, sizeof(uint64_t*), cudaMemcpyHostToDevice);
-uint64_t safe_exit = 0;
-cudaMemcpy(&(dev_masks->safe_exit), &safe_exit, sizeof(uint64_t), cudaMemcpyHostToDevice);
+    /*allocate memory on the device, redict the device pointers */
+    masks *dev_masks;
+    checkCudaErrors(cudaMalloc((void **)&dev_masks, sizeof(masks)));
+    uint64_t *column_masks;
+    checkCudaErrors(cudaMalloc((void **)&column_masks, sizeof(uint64_t) * blocks->block_side * blocks->grid_side)); //column masks will be allocated on the host
+    //but will hold the adress returning from the device
+    checkCudaErrors(cudaMemcpy(&(dev_masks->column_masks), &column_masks, sizeof(uint64_t *), cudaMemcpyHostToDevice));
+    //so  here when we make host to device, we are sending the memory location obtained from the device to the device again so that it will know the adress of it
+    uint64_t *row_masks;
+    checkCudaErrors(cudaMalloc((void **)&row_masks, sizeof(uint64_t) * blocks->block_side * blocks->grid_side));
+    checkCudaErrors(cudaMemcpy(&(dev_masks->row_masks), &row_masks, sizeof(uint64_t *), cudaMemcpyHostToDevice));
+    uint64_t *block_masks;
+    checkCudaErrors(cudaMalloc((void **)&block_masks, sizeof(uint64_t) * blocks->grid_side * blocks->grid_side));
+    checkCudaErrors(cudaMemcpy(&(dev_masks->block_masks), &block_masks, sizeof(uint64_t *), cudaMemcpyHostToDevice));
+    uint64_t safe_exit = 0;
+    checkCudaErrors(cudaMemcpy(&(dev_masks->safe_exit), &safe_exit, sizeof(uint64_t), cudaMemcpyHostToDevice));
 
-uint64_t* host_column_masks = (uint64_t*)malloc(sizeof(uint64_t) * blocks->block_side * blocks->grid_side);
-uint64_t* host_row_masks = (uint64_t*)malloc(sizeof(uint64_t) * blocks->block_side * blocks->grid_side);
-uint64_t* host_block_masks = (uint64_t*)malloc(sizeof(uint64_t) * blocks->grid_side* blocks->grid_side);
+    uint64_t *host_column_masks = (uint64_t *)malloc(sizeof(uint64_t) * blocks->block_side * blocks->grid_side);
+    uint64_t *host_row_masks    = (uint64_t *)malloc(sizeof(uint64_t) * blocks->block_side * blocks->grid_side);
+    uint64_t *host_block_masks  = (uint64_t *)malloc(sizeof(uint64_t) * blocks->grid_side * blocks->grid_side);
+
+    int *dev_pendings;
+    int *host_pendings = (int*)malloc(sizeof(int) * blocks->block_side * blocks->block_side * blocks->grid_side * blocks->grid_side);
+    memset(host_pendings, -1, sizeof(int) * blocks->block_side * blocks->block_side * blocks->grid_side * blocks->grid_side);
+    checkCudaErrors(cudaMalloc((void **)&dev_pendings, sizeof(int) * blocks->block_side * blocks->block_side * blocks->grid_side * blocks->grid_side));
+
+    int *gpa_return_val;
+    int host_gpa_return_val = 5;
+    int *dev_next;
+
+    checkCudaErrors(cudaMalloc((void **)&gpa_return_val, sizeof(int)));
+    checkCudaErrors(cudaMalloc((void **)&dev_next, sizeof(int)));
 
     forever {
-        
-
+        checkCudaErrors(cudaMemcpy(dev_pendings, host_pendings, sizeof(int) * blocks->block_side * blocks->block_side * blocks->grid_side * blocks->grid_side, cudaMemcpyHostToDevice));
+        checkCudaErrors(cudaMemset(dev_next, 0, sizeof(int)));
         //make the execution
         //since all the threads attacks a block in the grid and they are returning their piece, we dont have to pass
+
+
+           for (int i = 0; i < nb_threads; i++) {
+        dev_entropy_location_per_thread[i].entropy          = UINT8_MAX;
+        dev_entropy_location_per_thread[i].location_in_blk  = { 0, 0 };
+        dev_entropy_location_per_thread[i].location_in_grid = { 0, 0 };
+        dev_entropy_location_per_thread[i]._1               = 0;
+        dev_entropy_location_per_thread[i]._2               = 0;
+    }
+    checkCudaErrors(cudaMemcpy(dev_ret_entropy_location_per_thread, dev_entropy_location_per_thread, sizeof(entropy_location) * nb_threads, cudaMemcpyHostToDevice));
+
         //grid information to them => it is known internally
         dev_blk_min_entropy<<<dim_cuda_grid, dim_cuda_block>>>(d_blocks, dev_ret_entropy_location_per_thread);
         //return the array from device to host
         checkCudaErrors(cudaMemcpy(dev_entropy_location_per_thread,
                                    dev_ret_entropy_location_per_thread, sizeof(entropy_location) * nb_threads, cudaMemcpyDeviceToHost));
         //cudaDeviceSynchronize();
-
-        ////printf("making sure they are different ? \n");
-        //for (int i = 0; i < nb_threads; i++) {
-        //    printf("%" PRIu8 "\n %d %d %d %d \n", dev_entropy_location_per_thread[i].entropy,
-        //           dev_entropy_location_per_thread[i].location_in_blk.x,
-        //           dev_entropy_location_per_thread[i].location_in_blk.y,
-        //           dev_entropy_location_per_thread[i].location_in_grid.x,
-        //           dev_entropy_location_per_thread[i].location_in_grid.y);
-        //}
 
         //finding the minimum problem
         for (int i = 0; i < nb_threads; i++) {
@@ -157,156 +166,86 @@ uint64_t* host_block_masks = (uint64_t*)malloc(sizeof(uint64_t) * blocks->grid_s
                 loc = test;
         }
         if (loc.entropy == UINT8_MAX)
-            break;        
-
-
-        ////grd_print(NULL, blocks); //last grid encountered
-        //printf("printing the entropy array minimum: \n");
-        //printf("%" PRIu8 "\n %d %d %d %d \n", loc.entropy,
-        //       loc.location_in_blk.x,
-        //       loc.location_in_blk.y,
-        //       loc.location_in_grid.x,
-        //       loc.location_in_grid.y);
-        //calling the same function from the cpu solver to compare the results
-        //i will not delete them until lost moment! if we have time i will do the streams too and dont want to write the same thing again!
+            break;
 
         int h_idx = get_thread_glob_idx(h_blocks,
-                                      loc.location_in_grid.x,
-                                      loc.location_in_grid.y,
-                                      loc.location_in_blk.x,
-                                      loc.location_in_blk.y);
-        //printf("index to propagate %d \n ", h_idx); 
+                                        loc.location_in_grid.x,
+                                        loc.location_in_grid.y,
+                                        loc.location_in_blk.x,
+                                        loc.location_in_blk.y);
+        printf("index to propagate %d \n ", h_idx);
 
         //it will be called from the cpu
         //since there is only one state to pass i dont see it necessary to do inside gpu
         h_blocks->states[h_idx] = entropy_collapse_state(h_blocks->states[h_idx],
-                                                     loc.location_in_grid.x,
-                                                     loc.location_in_grid.y,
-                                                     loc.location_in_blk.x,
-                                                     loc.location_in_blk.y,
-                                                     seed,
-                                                     iteration);
-                                          //ABOVE: change in one state
-        col_idx   = loc.location_in_grid.y * blocks->block_side + loc.location_in_blk.y; 
-        row_idx   = loc.location_in_grid.x * blocks->block_side + loc.location_in_blk.x; 
-        block_idx = loc.location_in_grid.x * blocks->grid_side  + loc.location_in_grid.y; 
-        printf("after collapsing\n"); 
-        grd_print(NULL, blocks); 
-        //try to import this to the device later 
-        set_mask(my_masks, col_idx, row_idx, block_idx, h_blocks->states[h_idx]); 
-        printf("masks on cpu\n"); 
-        print_masks(my_masks, blocks -> block_side, blocks-> grid_side); 
-//but will hold the adress returning from the device 
-//checkCudaErrors(cudaMemcpy(dev_masks, my_masks, sizeof(masks*), cudaMemcpyHostToDevice));
-checkCudaErrors (cudaMemcpy( column_masks, my_masks->column_masks,sizeof(uint64_t)* blocks->block_side * blocks->grid_side, cudaMemcpyHostToDevice));
-checkCudaErrors (cudaMemcpy( row_masks,    my_masks->row_masks, sizeof(uint64_t) * blocks->block_side * blocks->grid_side, cudaMemcpyHostToDevice));
-checkCudaErrors (cudaMemcpy( block_masks,  my_masks->block_masks, sizeof(uint64_t) * blocks->grid_side * blocks->grid_side, cudaMemcpyHostToDevice));
-checkCudaErrors (cudaMemcpy( &(safe_exit), &my_masks->safe_exit, sizeof(uint64_t), cudaMemcpyHostToDevice));
+                                                         loc.location_in_grid.x,
+                                                         loc.location_in_grid.y,
+                                                         loc.location_in_blk.x,
+                                                         loc.location_in_blk.y,
+                                                         seed,
+                                                         iteration);
+        //ABOVE: change in one state
+        col_idx   = loc.location_in_grid.y * blocks->block_side + loc.location_in_blk.y; //between 0 to 8
+        row_idx   = loc.location_in_grid.x * blocks->block_side + loc.location_in_blk.x; //between 0 to 8
+        block_idx = loc.location_in_grid.x * blocks->grid_side  + loc.location_in_grid.y; //between 0 to 8
+        printf("after collapsing\n");
+        grd_print(NULL, h_blocks);
+        //try to import this to the device later
+        
+        set_mask(my_masks, col_idx, row_idx, block_idx, h_blocks->states[h_idx]);
+         print_masks(my_masks, blocks->block_side, blocks->grid_side);
 
-        printf("masks on gpu\n");
-
-
-        //testing will take time so i continue for now
-        //printf(" blocks->states[idx] GPU: %lu\n", h_blocks->states[h_idx]);
-
-        if(my_masks->safe_exit == 1)
-        {
-            printf("conflict while collapsing, safe exiting\n"); 
-            return false; 
+        if (my_masks->safe_exit == 1) {
+            printf("conflict while collapsing, safe exiting in solver cuda \n");
+            return false;
         }
+        checkCudaErrors(cudaMemcpy(column_masks, my_masks->column_masks, sizeof(uint64_t) * blocks->block_side * blocks->grid_side, cudaMemcpyHostToDevice));
+        checkCudaErrors(cudaMemcpy(row_masks, my_masks->row_masks, sizeof(uint64_t) * blocks->block_side * blocks->grid_side, cudaMemcpyHostToDevice));
+        checkCudaErrors(cudaMemcpy(block_masks, my_masks->block_masks, sizeof(uint64_t) * blocks->grid_side * blocks->grid_side, cudaMemcpyHostToDevice));
+        checkCudaErrors(cudaMemcpy(&(dev_masks->safe_exit), &my_masks->safe_exit, sizeof(uint64_t), cudaMemcpyHostToDevice));
 
 
         checkCudaErrors(cudaMemcpy(d_blocks, h_blocks, size, cudaMemcpyHostToDevice)); //get this outside of forever ?
-        
 
-        //block propagate
-                                                                                    //here gotta pass the states from h_blocks, otherwise it wont recognize; it is expecting the value from cpu 
-        /*
-        dev_blk_propagate<<<dim_cuda_grid, dim_cuda_block>>>(d_blocks, loc.location_in_grid.x,
-                                                             loc.location_in_grid.y, h_blocks->states[h_idx]);
-        
-        
-        //just to print, transferring data 
-        //after verification remove it 
-        //checkCudaErrors(cudaMemcpy(h_blocks,d_blocks, size,cudaMemcpyDeviceToHost));
-        ////printf("GPU AFTER BLOCK PROPAGATE\n"); 
-        ////grd_print(NULL, h_blocks); 
+        //CALL TO PROPOGATE ALL
+      
 
-        dev_grd_propagate_column<<<dim_cuda_grid, dim_cuda_block>>>(d_blocks, loc.location_in_grid.x,
-           loc.location_in_grid.y,  loc.location_in_blk.x, loc.location_in_blk.y,h_blocks->states[h_idx]);
-        //checkCudaErrors(cudaMemcpy(h_blocks,d_blocks, size,cudaMemcpyDeviceToHost));
-        ////printf("GPU AFTER COLUMN PROPAGATE\n"); 
-        ////grd_print(NULL, h_blocks); 
+        global_propagate_all<<<dim_cuda_grid, dim_cuda_block>>>(d_blocks, loc.location_in_grid.x,
+                                                                loc.location_in_grid.y,
+                                                                loc.location_in_blk.x,
+                                                                loc.location_in_blk.y, h_blocks->states[h_idx], dev_masks,
+                                                                dev_pendings, gpa_return_val, dev_next);
 
 
-        dev_grd_propagate_row<<<dim_cuda_grid, dim_cuda_block>>>(d_blocks, loc.location_in_grid.x,
-            loc.location_in_grid.y, loc.location_in_blk.x, loc.location_in_blk.y,h_blocks->states[h_idx]);
-       */
+        checkCudaErrors(cudaMemcpy(&host_gpa_return_val, gpa_return_val, sizeof(int), cudaMemcpyDeviceToHost));
 
-        checkCudaErrors(cudaMemcpy(h_blocks,d_blocks, size,cudaMemcpyDeviceToHost));
-        printf("GPU AFTER ROW PROPAGATE\n"); 
-        grd_print(NULL, h_blocks); 
-//cudaMemcpy(my_masks, dev_masks, sizeof(masks*), cudaMemcpyDeviceToHost);
-checkCudaErrors(cudaMemcpy( host_column_masks, column_masks, sizeof(uint64_t) * blocks->block_side * blocks->grid_side, cudaMemcpyDeviceToHost));
-checkCudaErrors(cudaMemcpy( host_row_masks,      row_masks, sizeof(uint64_t) * blocks->block_side * blocks->grid_side, cudaMemcpyDeviceToHost));
-checkCudaErrors(cudaMemcpy( host_block_masks,    block_masks, sizeof(uint64_t) * blocks->grid_side * blocks->grid_side, cudaMemcpyDeviceToHost));
-checkCudaErrors(cudaMemcpy( &my_masks->safe_exit, &(dev_masks->safe_exit), sizeof(uint64_t), cudaMemcpyDeviceToHost)) ;
-my_masks->column_masks = column_masks; 
-my_masks->row_masks = row_masks; 
-my_masks->block_masks = block_masks; 
-print_masks(my_masks, blocks->block_side, blocks->grid_side); 
-/// ERROR CHECK ///
+        //printf("return val: %d\n", host_gpa_return_val);
 
-        //int* dev_result = NULL; //we need the return frm the function that is executing in 
-        ////the gpu, therefore to return a value we have to allocate on the device 
-        //int result = 0 ; 
-        //checkCudaErrors(cudaMalloc((void**)& dev_result, sizeof(uint8_t))); 
-        ////call grid error check 
-        //dev_grd_check_error_in_blk<<<dim_cuda_grid, dim_cuda_block>>>(d_blocks,loc.location_in_grid.x,
-        //    loc.location_in_grid.y, loc.location_in_blk.x, loc.location_in_blk.y, dev_result); 
-        ////pass dev result and retrieve it as the result 
-        //checkCudaErrors(cudaMemcpy(&result, dev_result, sizeof(int), cudaMemcpyDeviceToHost)); 
-         
-        /////////CPU///////////////////
-        /*loc.entropy = UINT8_MAX;
-        for (int gx = 0; gx < blocks->grid_side; gx++)
-            for (int gy = 0; gy < blocks->grid_side; gy++) {
-                test = blk_min_entropy(blocks, gx, gy);
-                if (test.entropy < loc.entropy)
-                    loc = test;
-            }
-        //////printf("CPU RESULTS\n");
-        //////printf("%" PRIu8 "\n %d %d %d %d \n", loc.entropy,
-        //       loc.location_in_blk.x,
-        //       loc.location_in_blk.y,
-        //       loc.location_in_grid.x,
-        //       loc.location_in_grid.y);
-        int idx = get_thread_glob_idx(h_blocks,
-                                      loc.location_in_grid.x,
-                                      loc.location_in_grid.y,
-                                      loc.location_in_blk.x,
-                                      loc.location_in_blk.y);
-        blocks->states[idx] = entropy_collapse_state(blocks->states[idx],
-                                                     loc.location_in_grid.x,
-                                                     loc.location_in_grid.y,
-                                                     loc.location_in_blk.x,
-                                                     loc.location_in_blk.y,
-                                                     seed,
-                                                     iteration);
-        ////printf("index to propagate %d \n ", idx); 
+        if (host_gpa_return_val == 1) {
+            printf("encountered an error or a conflict safe exiting\n");
+            return false;
+        }
 
-        ////printf(" blocks->states[idx] CPU: %lu\n", blocks->states[idx]);
-//add cpu function here that would help me to verify the steps 
-        
+        checkCudaErrors(cudaMemcpy(h_blocks, d_blocks, size, cudaMemcpyDeviceToHost));
+         printf("GPU AFTER propogate all\n");
+         grd_print(NULL, h_blocks);
+        cudaMemcpy(my_masks, dev_masks, sizeof(masks *), cudaMemcpyDeviceToHost);
+        checkCudaErrors(cudaMemcpy(host_column_masks, column_masks, sizeof(uint64_t) * blocks->block_side * blocks->grid_side, cudaMemcpyDeviceToHost));
+        checkCudaErrors(cudaMemcpy(host_row_masks, row_masks, sizeof(uint64_t) * blocks->block_side * blocks->grid_side, cudaMemcpyDeviceToHost));
+        checkCudaErrors(cudaMemcpy(host_block_masks, block_masks, sizeof(uint64_t) * blocks->grid_side * blocks->grid_side, cudaMemcpyDeviceToHost));
+        checkCudaErrors(cudaMemcpy(&safe_exit, &(dev_masks->safe_exit), sizeof(uint64_t), cudaMemcpyDeviceToHost));
+        my_masks->column_masks = host_column_masks;
+        my_masks->row_masks    = host_row_masks;
+        my_masks->block_masks  = host_block_masks;
+        my_masks->safe_exit    = safe_exit;
+          if (my_masks->safe_exit == 1) {
+            printf("conflict while collapsing,received from the solver \n");
+            return false;
+        }
+         print_masks(my_masks, blocks->block_side, blocks->grid_side);
 
-        if(verify_states(h_blocks, blocks)){
-            ////printf("VERIFIED\n");
-        }else {
-            ////printf("NOT VERIFIED\n"); 
-        }; 
-*/
         iteration += 1;
-        if (iteration == 1) {
+        if (iteration == 5) {
             ////printf("iteration = 1 \n");
             break;
         }

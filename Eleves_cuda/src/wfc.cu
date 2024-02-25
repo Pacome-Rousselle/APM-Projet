@@ -435,6 +435,69 @@ bool propagate_all(wfc_blocks_ptr blocks, uint32_t gx, uint32_t gy,
     return true;
 }
 
+/*bool propagate_all(wfc_blocks_ptr blocks, uint32_t gx, uint32_t gy,
+                   uint32_t x, uint32_t y, uint64_t collapsed, masks* my_masks)
+{
+    size_t size = 2 * (blocks->grid_side * blocks->block_side - 1); // Row and Col
+    size += blocks->block_side * blocks->block_side - 1;            // Block
+
+    uint64_t *pending = (uint64_t*) calloc(size, sizeof(uint64_t));
+    int next          = 0;
+    uint32_t col_idx  ;
+    uint32_t row_idx  ;
+    uint32_t block_idx;
+
+    // BLOCK
+    blk_propagate(blocks, gx, gy, collapsed, pending, &next, my_masks);
+
+    printf("After block propogate\n");
+    grd_print(NULL, blocks);
+
+    print_masks(my_masks, blocks->block_side, blocks->grid_side); 
+
+    // Column
+    grd_propagate_column(blocks, gx, gy, x, y, collapsed, pending, &next, my_masks);
+
+    // Row
+    grd_propagate_row(blocks, gx, gy, x, y, collapsed, pending, &next,  my_masks);
+
+    // Chain reaction
+    int gxx, gyy, xx, yy, new_idx;
+
+    for (int i = next-1; i >= 0; i--) {
+        new_idx = pending[i];
+
+        yy = new_idx % (blocks->block_side * blocks->block_side);
+        xx = new_idx / (blocks->block_side * blocks->block_side);
+        gyy = xx % (blocks->grid_side);
+        gxx = xx / (blocks->grid_side);
+
+        int jsp = gxx * (blocks->grid_side) + gyy;
+        int jsp2 = jsp * (blocks->block_side * blocks->block_side);
+        int jsp3 = new_idx - jsp2;
+
+        yy = jsp3 % (blocks->grid_side);
+        xx = jsp3 / (blocks->grid_side);
+
+        col_idx   = gyy * blocks->block_side + yy; 
+        row_idx   = gxx * blocks->block_side + xx; 
+        block_idx = gxx * blocks->grid_side + gyy; 
+        
+        set_mask(my_masks, col_idx, row_idx, block_idx, blocks->states[new_idx]); 
+        if(my_masks->safe_exit == 1)
+        {
+            printf("conflict while collapsing, safe exiting\n"); 
+            return false; 
+        }
+
+        // Instead of making a recursive call, add the new states to the queue
+        blk_propagate(blocks, gxx, gyy, blocks->states[new_idx], pending, &next, my_masks);
+        grd_propagate_column(blocks, gxx, gyy, xx, yy, blocks->states[new_idx], pending, &next, my_masks);
+        grd_propagate_row(blocks, gxx, gyy, xx, yy, blocks->states[new_idx], pending, &next, my_masks);
+    }
+
+    return true;
+}*/
 
 
 // When propagating, check if a state gets only 1 state left to propagate it further
