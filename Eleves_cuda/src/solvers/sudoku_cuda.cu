@@ -133,6 +133,25 @@ solve_cuda(wfc_blocks_ptr blocks, uint64_t seed, masks *my_masks)
     int host_gpa_return_val = 5;
     int *dev_next;
 
+int host_next; 
+
+uint64_t* dev_conf_loc; 
+uint64_t* dev_pass_collapsed; 
+
+uint64_t* dev_place; 
+checkCudaErrors(cudaMalloc((void **)&dev_place, sizeof(uint64_t)));
+checkCudaErrors(cudaMalloc((void **)&dev_pass_collapsed, sizeof(uint64_t)));
+
+checkCudaErrors(cudaMalloc((void **)&dev_conf_loc, sizeof(uint64_t)));
+uint64_t host_conf_loc; 
+uint64_t host_place; 
+uint64_t host_pass_collapsed; 
+
+
+uint64_t* dev_th_loc; 
+checkCudaErrors(cudaMalloc((void **)&dev_th_loc, sizeof(uint64_t)));
+uint64_t host_th_loc; 
+
     checkCudaErrors(cudaMalloc((void **)&gpa_return_val, sizeof(int)));
     checkCudaErrors(cudaMalloc((void **)&dev_next, sizeof(int)));
 
@@ -141,7 +160,8 @@ solve_cuda(wfc_blocks_ptr blocks, uint64_t seed, masks *my_masks)
         checkCudaErrors(cudaMemset(dev_next, 0, sizeof(int)));
         //make the execution
         //since all the threads attacks a block in the grid and they are returning their piece, we dont have to pass
-
+   printf("before dev entropy\n"); 
+   grd_print(NULL, h_blocks);
 
            for (int i = 0; i < nb_threads; i++) {
         dev_entropy_location_per_thread[i].entropy          = UINT8_MAX;
@@ -153,27 +173,59 @@ solve_cuda(wfc_blocks_ptr blocks, uint64_t seed, masks *my_masks)
     checkCudaErrors(cudaMemcpy(dev_ret_entropy_location_per_thread, dev_entropy_location_per_thread, sizeof(entropy_location) * nb_threads, cudaMemcpyHostToDevice));
 
         //grid information to them => it is known internally
-        dev_blk_min_entropy<<<dim_cuda_grid, dim_cuda_block>>>(d_blocks, dev_ret_entropy_location_per_thread);
+       /* dev_blk_min_entropy<<<dim_cuda_grid, dim_cuda_block>>>(d_blocks, dev_ret_entropy_location_per_thread);
         //return the array from device to host
         checkCudaErrors(cudaMemcpy(dev_entropy_location_per_thread,
                                    dev_ret_entropy_location_per_thread, sizeof(entropy_location) * nb_threads, cudaMemcpyDeviceToHost));
         //cudaDeviceSynchronize();
+loc.entropy == UINT8_MAX; 
 
         //finding the minimum problem
+        int keep; 
         for (int i = 0; i < nb_threads; i++) {
             test = dev_entropy_location_per_thread[i];
             if (test.entropy < loc.entropy)
-                loc = test;
+                {loc = test;
+                keep = i; 
+                }
         }
+        printf("keep: %d", keep); 
         if (loc.entropy == UINT8_MAX)
             break;
+
+for(int i = 0; i < nb_threads; i++){
+    printf("i %d\n", i ); 
+    printf(" gx %lu, gy %lu,  x %lu, y %lu \n", 
+                                        dev_entropy_location_per_thread[i].location_in_grid.x,
+                                        dev_entropy_location_per_thread[i].location_in_grid.y,
+                                        dev_entropy_location_per_thread[i].location_in_blk.x,
+                                        dev_entropy_location_per_thread[i].location_in_blk.y); 
+}
+
+        loc = dev_entropy_location_per_thread[keep]; 
+        */
+        loc.entropy = UINT8_MAX;
+        for (int gx = 0; gx < blocks->grid_side; gx++)
+            for (int gy = 0; gy < blocks->grid_side; gy++)
+            {
+                test = blk_min_entropy(h_blocks,gx,gy);
+                if(test.entropy < loc.entropy)
+                    loc = test;
+            }
+
+
 
         int h_idx = get_thread_glob_idx(h_blocks,
                                         loc.location_in_grid.x,
                                         loc.location_in_grid.y,
                                         loc.location_in_blk.x,
                                         loc.location_in_blk.y);
-        printf("index to propagate %d \n ", h_idx);
+        //printf("index to propagate %d \n ", h_idx);
+        printf(" index to propagate %d, gx %lu, gy %lu,  x %lu, y %lu \n", h_idx,
+                                        loc.location_in_grid.x,
+                                        loc.location_in_grid.y,
+                                        loc.location_in_blk.x,
+                                        loc.location_in_blk.y); 
 
         //it will be called from the cpu
         //since there is only one state to pass i dont see it necessary to do inside gpu
@@ -188,6 +240,8 @@ solve_cuda(wfc_blocks_ptr blocks, uint64_t seed, masks *my_masks)
         col_idx   = loc.location_in_grid.y * blocks->block_side + loc.location_in_blk.y; //between 0 to 8
         row_idx   = loc.location_in_grid.x * blocks->block_side + loc.location_in_blk.x; //between 0 to 8
         block_idx = loc.location_in_grid.x * blocks->grid_side  + loc.location_in_grid.y; //between 0 to 8
+        printf("col_ids %d, row odx %d,  blockidx %d", col_idx, row_idx, block_idx); 
+
         printf("after collapsing\n");
         grd_print(NULL, h_blocks);
         //try to import this to the device later
@@ -214,15 +268,21 @@ solve_cuda(wfc_blocks_ptr blocks, uint64_t seed, masks *my_masks)
                                                                 loc.location_in_grid.y,
                                                                 loc.location_in_blk.x,
                                                                 loc.location_in_blk.y, h_blocks->states[h_idx], dev_masks,
-                                                                dev_pendings, gpa_return_val, dev_next);
+                                                                dev_pendings, gpa_return_val, dev_next, dev_conf_loc, dev_th_loc, dev_place, 
+                                                                dev_pass_collapsed);
 
 
         checkCudaErrors(cudaMemcpy(&host_gpa_return_val, gpa_return_val, sizeof(int), cudaMemcpyDeviceToHost));
+        checkCudaErrors(cudaMemcpy(&host_conf_loc, dev_conf_loc, sizeof(uint64_t), cudaMemcpyDeviceToHost));
+        checkCudaErrors(cudaMemcpy(&host_th_loc, dev_th_loc, sizeof(uint64_t), cudaMemcpyDeviceToHost));
+        checkCudaErrors(cudaMemcpy(&host_place, dev_place, sizeof(uint64_t), cudaMemcpyDeviceToHost));
+        checkCudaErrors(cudaMemcpy(&host_pass_collapsed, dev_pass_collapsed, sizeof(uint64_t), cudaMemcpyDeviceToHost));
+
 
         //printf("return val: %d\n", host_gpa_return_val);
 
         if (host_gpa_return_val == 1) {
-            printf("encountered an error or a conflict safe exiting\n");
+            printf("encountered an error or a conflict safe exiting dev_confloc %lu , dev_th_loc %lu\n", host_conf_loc, host_th_loc);
             return false;
         }
 
@@ -238,17 +298,31 @@ solve_cuda(wfc_blocks_ptr blocks, uint64_t seed, masks *my_masks)
         my_masks->row_masks    = host_row_masks;
         my_masks->block_masks  = host_block_masks;
         my_masks->safe_exit    = safe_exit;
-          if (my_masks->safe_exit == 1) {
-            printf("conflict while collapsing,received from the solver \n");
-            return false;
-        }
          print_masks(my_masks, blocks->block_side, blocks->grid_side);
 
-        iteration += 1;
-        if (iteration == 5) {
-            ////printf("iteration = 1 \n");
-            break;
+          if (my_masks->safe_exit == 1) {
+            printf("conflict while collapsing,received from the solver \n");
+            printf("encountered an error or a conflict safe exiting dev_confloc %lu , dev_th_loc %lu, place %d, coll %d\n",
+                         host_conf_loc, host_th_loc, host_place, bit_to_val(host_pass_collapsed));
+
+            return false;
         }
+
+        //checkCudaErrors(cudaMemcpy(host_pendings, dev_pendings, sizeof(int) * blocks->block_side * blocks->block_side * blocks->grid_side * blocks->grid_side, cudaMemcpyDeviceToHost));
+
+//for(int i = 0; i < blocks->block_side * blocks->block_side * blocks->grid_side * blocks->grid_side; i++ )
+//{
+//    printf("pendings[%d] = %d \n", i, host_pendings[i]); 
+//}
+//printf("nb iteration %d", iteration); 
+//        checkCudaErrors(cudaMemcpy(&host_next, dev_next, sizeof(int) , cudaMemcpyDeviceToHost));
+//        printf("host next %d\n", host_next); 
+
+        iteration += 1;
+        //if (iteration == 5) {
+        //    ////printf("iteration = 1 \n");
+        //    break;
+        //}
 
         //free the memory locations from the cpu and gpu!!!
         //if it's outside of forever call teh destroyer

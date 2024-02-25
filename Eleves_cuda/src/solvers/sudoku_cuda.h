@@ -171,7 +171,6 @@ __global__ void
 dev_blk_min_entropy(const wfc_blocks_ptr blocks, entropy_location *entropy_loctaion_per_thread)
 { //each thread will enter here and will find the location for its own block,
     //will then stock it in the dedicated case for themselves in the entropy_location* entropy_loctaion_per_thread
-    //hmm but it means that the new_loc array then will cointain pointers from gpu
     vec2 blk_location   = { 0 };
     uint8_t min_entropy = UINT8_MAX;
     uint8_t entropy_test;
@@ -189,14 +188,18 @@ dev_blk_min_entropy(const wfc_blocks_ptr blocks, entropy_location *entropy_locta
     int th_idx              = row * width + col;
 
     //Navigate through the block
+    int keep_x;
+    int keep_y;
     for (int block_x = 0; block_x < blocks->block_side; block_x++) {
         for (int block_y = 0; block_y < blocks->block_side; block_y++) {
-            idx = th_idx_arr_location + block_x * block_size + block_y; 
+            idx = th_idx_arr_location + block_x * block_size + block_y;
             dev_entropy_compute(blocks->states[idx], &entropy_test);
             if ((entropy_test < min_entropy) && (entropy_test > 1)) {
                 min_entropy    = entropy_test;
                 blk_location.x = block_x;
                 blk_location.y = block_y;
+                keep_x         = block_x;
+                keep_y         = block_y;
             }
         }
     }
@@ -205,9 +208,11 @@ dev_blk_min_entropy(const wfc_blocks_ptr blocks, entropy_location *entropy_locta
     int our_grid_Idy = blockIdx.x % grid_size;
 
     entropy_loctaion_per_thread[th_idx].entropy            = min_entropy;
-    entropy_loctaion_per_thread[th_idx].location_in_blk    = blk_location;
     entropy_loctaion_per_thread[th_idx].location_in_grid.x = our_grid_Idx;
     entropy_loctaion_per_thread[th_idx].location_in_grid.y = our_grid_Idy;
+    entropy_loctaion_per_thread[th_idx].location_in_blk.x  = keep_x;
+    entropy_loctaion_per_thread[th_idx].location_in_blk.y  = keep_y;
+
     //return new;
 }
 
@@ -326,7 +331,7 @@ dev_grd_propagate_row(wfc_blocks_ptr blocks,
 
 __device__ void //given grid indexes
 dev_dev_grd_propagate_column(wfc_blocks_ptr blocks, uint32_t gx, uint32_t gy,
-                             uint32_t x, uint32_t y, uint64_t collapsed, int* pending, int* next)
+                             uint32_t x, uint32_t y, uint64_t collapsed, int *pending, int *next)
 {
     //each thread gets a block
     //for grid propopagate column it means that each thread will update the the its rows on that column
@@ -360,22 +365,21 @@ dev_dev_grd_propagate_column(wfc_blocks_ptr blocks, uint32_t gx, uint32_t gy,
         //for (int gxx = 0; gxx < blocks->grid_side; gxx++) { //dont traverse the grid side because each thread has a block, it does it naturally
         idx = th_idx_arr_location + i * block_size + y;
         dev_bitfield_count(blocks->states[idx], &bc);
-        if (bc != 1)
-            {
-                blocks->states[idx] &= ~(collapsed);
-                if(blocks->states[idx] == 1){
-                     pending[(*next)] = idx; 
-                   //(*next)++;
-                   atomicAdd(next,1);   
-                }
+        if (bc != 1) {
+            blocks->states[idx] &= ~(collapsed);
+            if (blocks->states[idx] == 1) {
+                pending[(*next)] = idx;
+                //(*next)++;
+                atomicAdd(next, 1);
             }
+        }
     }
 }
 
 __device__ void
 dev_dev_blk_propagate(wfc_blocks_ptr blocks,
                       uint32_t gx, uint32_t gy,
-                      uint64_t collapsed, int* pending, int* next )
+                      uint64_t collapsed, int *pending, int *next)
 {
     /*if the thread is not owner the block with the minimum entropy it is not going to propagate*/
     int block_size   = blocks->block_side;
@@ -400,41 +404,42 @@ dev_dev_blk_propagate(wfc_blocks_ptr blocks,
             idx = th_idx_arr_location + i * blocks->block_side + j;
             dev_bitfield_count(blocks->states[idx], &bc);
 
-            if (bc != 1){
-
+            if (bc != 1) {
                 blocks->states[idx] &= ~(collapsed);
-                if( blocks->states[idx] == 1 ){
-                   pending[(*next)] = idx; 
-                   //(*next)++;  
-                   atomicAdd(next, 1); 
+                if (blocks->states[idx] == 1) {
+                    pending[(*next)] = idx;
+                    //(*next)++;
+                    atomicAdd(next, 1);
                 }
             }
         }
 }
 
 __device__ void
-dev_set_mask(uint64_t grid_size, uint64_t block_size, masks *my_mask, uint64_t col_index, uint64_t row_index, uint64_t block_index, uint64_t collapsed)
+dev_set_mask(uint64_t grid_size, uint64_t block_size, masks *my_mask,
+             uint64_t col_index, uint64_t row_index, uint64_t block_index,
+             uint64_t collapsed, uint64_t *conflict_loc, uint64_t *th_loc, uint64_t* place, uint64_t* pass_collapsed)
 {
+    int our_grid_Idx        = blockIdx.x / grid_size; //rox location in the grid
+    int our_grid_Idy        = blockIdx.x % grid_size; //col location in the grid
+    int row                 = blockIdx.y * blockDim.y + threadIdx.y;
+    int col                 = blockIdx.x * blockDim.x + threadIdx.x;
+    int width               = gridDim.x * blockDim.x;
+    int th_idx_arr_location = (row * width + col) * block_size * block_size;
+    int th_idx              = row * width + col;
+    int col_index_in_grid   = our_grid_Idy * grid_size + col_index % block_size;
+    int row_index_in_grid   = our_grid_Idx * grid_size + row_index % block_size;
 
-    int our_grid_Idx          = blockIdx.x / grid_size; //rox location in the grid
-    int our_grid_Idy          = blockIdx.x % grid_size; //col location in the grid
-    int row                   = blockIdx.y * blockDim.y + threadIdx.y;
-    int col                   = blockIdx.x * blockDim.x + threadIdx.x;
-    int width                 = gridDim.x * blockDim.x;
-    int th_idx_arr_location   = (row * width + col) * block_size * block_size;
-    int th_idx                = row * width + col;
-    int col_index_in_grid     = our_grid_Idy * grid_size + col_index%block_size; 
-    int row_index_in_grid     = our_grid_Idx * grid_size + row_index%block_size;  
-
-    if (th_idx != block_index){
-        return; 
-    }
-    if(col_index != col_index_in_grid){
-        return; 
-    }
-    if(row_index != row_index_in_grid){
-        return; 
-    }
+    *pass_collapsed = collapsed; 
+    //if (th_idx != block_index) {
+    //    return;
+    //}
+    //if (col_index != col_index_in_grid) {
+    //    return;
+    //}
+    //if (row_index != row_index_in_grid) {
+    //    return;
+    //}
 
     uint64_t val_col   = my_mask->column_masks[col_index];
     uint64_t val_row   = my_mask->row_masks[row_index];
@@ -447,6 +452,9 @@ dev_set_mask(uint64_t grid_size, uint64_t block_size, masks *my_mask, uint64_t c
         if (val_col == ret_col) {
             //printf("this value %lu has been set before on column idx: %lu\n", bit_to_val(collapsed), col_index);
             //printf("trying safe exit and pass to new seed if not in the load\n");
+            *conflict_loc        = (uint64_t)col_index;
+            *th_loc              = (uint64_t)th_idx_arr_location ;//th_idx;
+            *place = 0; 
             (my_mask->safe_exit) = 1;
             return;
         }
@@ -454,7 +462,9 @@ dev_set_mask(uint64_t grid_size, uint64_t block_size, masks *my_mask, uint64_t c
         if (val_row == ret_row) {
             //printf("this value %lu has been set before on row idx: %lu\n", bit_to_val(collapsed), row_index);
             //printf("trying safe exit and pass to new seed if not in the load\n");
-
+            *conflict_loc        = (uint64_t)row_index;
+            *th_loc              = (uint64_t) th_idx;
+            *place = 1; 
             (my_mask->safe_exit) = 1;
             return;
         }
@@ -463,18 +473,20 @@ dev_set_mask(uint64_t grid_size, uint64_t block_size, masks *my_mask, uint64_t c
         if (val_block == ret_block) {
             //printf("this value %lu has been set before on block idx: %lu\n", bit_to_val(collapsed), block_index);
             //printf("trying safe exit and pass to new seed if not in the load\n");
-
+            *conflict_loc        = (uint64_t)block_index;
+            *th_loc              = (uint64_t)th_idx;
+            *place = 2; 
             (my_mask->safe_exit) = 1;
             return;
         }
-    my_mask->column_masks[col_index] = ret_col;
-    my_mask->row_masks[row_index]    = ret_row;
-    my_mask->block_masks[block_index]  = ret_block;
+    my_mask->column_masks[col_index]  = ret_col;
+    my_mask->row_masks[row_index]     = ret_row;
+    my_mask->block_masks[block_index] = ret_block;
 }
 __device__ void
 dev_dev_grd_propagate_row(wfc_blocks_ptr blocks,
                           uint32_t gx, uint32_t gy, uint32_t x, uint32_t y,
-                          uint64_t collapsed, int* pending, int* next)
+                          uint64_t collapsed, int *pending, int *next)
 {
     int block_size            = blocks->block_side;
     int grid_size             = blocks->grid_side;
@@ -502,34 +514,32 @@ dev_dev_grd_propagate_row(wfc_blocks_ptr blocks,
         for (int j = 0; j < blocks->block_side; j++) {
             idx = th_idx_arr_location + x * block_size + j;
             dev_bitfield_count(blocks->states[idx], &bc);
-            if (bc != 1)
-                {
-                    blocks->states[idx] &= ~(collapsed);
-                    if(blocks->states[idx] == 1){
-                         pending[(*next)] = idx; 
-                   //(*next)++;  
-                   atomicAdd(next, 1); 
-                    }
+            if (bc != 1) {
+                blocks->states[idx] &= ~(collapsed);
+                if (blocks->states[idx] == 1) {
+                    pending[(*next)] = idx;
+                    //(*next)++;
+                    atomicAdd(next, 1);
                 }
+            }
         }
     }
     // return 0;
 }
 
-__global__ void global_propagate_all(wfc_blocks_ptr blocks, uint32_t gx, uint32_t gy,
-                   uint32_t x, uint32_t y, uint64_t collapsed, masks* my_masks, int* pending, 
-                   int* return_val, int* next)
+__global__ void
+global_propagate_all(wfc_blocks_ptr blocks, uint32_t gx, uint32_t gy,
+                     uint32_t x, uint32_t y, uint64_t collapsed, masks *my_masks, int *pending,
+                     int *return_val, int *next, 
+                     uint64_t* conflict_loc, uint64_t* th_loc, uint64_t* place, uint64_t* pass_collapsed )
 {
-
-    
-
-    size_t size = 2 * (blocks->grid_side * blocks->block_side - 1); // Row and Col
-    size += blocks->block_side * blocks->block_side - 1;            // Block
+    // size_t size = 2 * (blocks->grid_side * blocks->block_side - 1); // Row and Col
+    // size += blocks->block_side * blocks->block_side - 1;            // Block
 
     //uint64_t *pending = (uint64_t*) calloc(size, sizeof(uint64_t));
     //int next          = 0;
-    uint32_t col_idx  ;
-    uint32_t row_idx  ;
+    uint32_t col_idx;
+    uint32_t row_idx;
     uint32_t block_idx;
 
     // BLOCK
@@ -538,7 +548,7 @@ __global__ void global_propagate_all(wfc_blocks_ptr blocks, uint32_t gx, uint32_
     //printf("After block propogate\n");
     //grd_print(NULL, blocks);
 
-    //print_masks(my_masks, blocks->block_side, blocks->grid_side); 
+    //print_masks(my_masks, blocks->block_side, blocks->grid_side);
 
     // Column
     dev_dev_grd_propagate_column(blocks, gx, gy, x, y, collapsed, pending, next);
@@ -549,57 +559,73 @@ __global__ void global_propagate_all(wfc_blocks_ptr blocks, uint32_t gx, uint32_
     // Chain reaction
     int gxx, gyy, xx, yy, new_idx;
 
-    while (*next > 0) {
-        //int pending_size = blocks->block_side * blocks->block_side * blocks->grid_side * blocks->grid_side; 
-        //for(uint64_t i = 0; i < pending_size; i++){
-        //    if(pending[i] != -1)
-        //    {
-            if(threadIdx.x == 0){
-                --(*next);
-            }
-             __syncthreads(); 
-       
-        new_idx = pending[(*next)];  // Dequeue the next state
+    while (*next >= 0) {
+        if (*next == 0 && pending[0] != -1) {
+            new_idx = pending[0]; // Dequeue the next state
 
-        yy = new_idx % (blocks->block_side * blocks->block_side);
-        xx = new_idx / (blocks->block_side * blocks->block_side);
+            yy  = new_idx % (blocks->block_side * blocks->block_side);
+            xx  = new_idx / (blocks->block_side * blocks->block_side);
+            gyy = xx % (blocks->grid_side);
+            gxx = xx / (blocks->grid_side);
+
+            int jsp  = gxx * (blocks->grid_side) + gyy;
+            int jsp2 = jsp * (blocks->block_side * blocks->block_side);
+            int jsp3 = new_idx - jsp2;
+
+            yy = jsp3 % (blocks->grid_side);
+            xx = jsp3 / (blocks->grid_side);
+
+            col_idx   = gyy * blocks->block_side + yy;
+            row_idx   = gxx * blocks->block_side + xx;
+            block_idx = gxx * blocks->grid_side + gyy;
+if(blockIdx.x == 0 && blockIdx.y == 0)
+            dev_set_mask(blocks->grid_side, blocks->block_side, my_masks, col_idx, row_idx, block_idx, blocks->states[new_idx], conflict_loc, th_loc, place, pass_collapsed);
+            __syncthreads();
+
+            if (my_masks->safe_exit == 1) {
+                //printf("conflict while collapsing, safe exiting\n");
+                *return_val = 1;
+            }
+
+            // Instead of making a recursive call, add the new states to the queue
+            dev_dev_blk_propagate(blocks, gxx, gyy, blocks->states[new_idx], pending, next);
+            dev_dev_grd_propagate_column(blocks, gxx, gyy, xx, yy, blocks->states[new_idx], pending, next);
+            dev_dev_grd_propagate_row(blocks, gxx, gyy, xx, yy, blocks->states[new_idx], pending, next);
+        }
+
+        new_idx = pending[(--(*next))]; // Dequeue the next state
+
+        yy  = new_idx % (blocks->block_side * blocks->block_side);
+        xx  = new_idx / (blocks->block_side * blocks->block_side);
         gyy = xx % (blocks->grid_side);
         gxx = xx / (blocks->grid_side);
 
-        int jsp = gxx * (blocks->grid_side) + gyy;
+        int jsp  = gxx * (blocks->grid_side) + gyy;
         int jsp2 = jsp * (blocks->block_side * blocks->block_side);
         int jsp3 = new_idx - jsp2;
 
         yy = jsp3 % (blocks->grid_side);
         xx = jsp3 / (blocks->grid_side);
 
-        col_idx   = gyy * blocks->block_side + yy; 
-        row_idx   = gxx * blocks->block_side + xx; 
-        block_idx = gxx * blocks->grid_side + gyy; 
-        
-        dev_set_mask(blocks->grid_side, blocks->block_side, my_masks, col_idx, row_idx, block_idx, blocks->states[new_idx]); 
-        __syncthreads(); 
+        col_idx   = gyy * blocks->block_side + yy;
+        row_idx   = gxx * blocks->block_side + xx;
+        block_idx = gxx * blocks->grid_side + gyy;
+if(blockIdx.x == 0 && blockIdx.y == 0)
 
-        if(my_masks->safe_exit == 1)
-        {
-            //printf("conflict while collapsing, safe exiting\n"); 
-            *return_val = 1; 
+        dev_set_mask(blocks->grid_side, blocks->block_side, my_masks, col_idx, row_idx, block_idx, blocks->states[new_idx], conflict_loc, th_loc, place, pass_collapsed);
+        __syncthreads();
+
+        if (my_masks->safe_exit == 1) {
+            //printf("conflict while collapsing, safe exiting\n");
+            *return_val = 1;
         }
 
         // Instead of making a recursive call, add the new states to the queue
         dev_dev_blk_propagate(blocks, gxx, gyy, blocks->states[new_idx], pending, next);
         dev_dev_grd_propagate_column(blocks, gxx, gyy, xx, yy, blocks->states[new_idx], pending, next);
-        dev_dev_grd_propagate_row(blocks, gxx, gyy, xx, yy, blocks->states[new_idx], pending, next );
-            }
-        //}
+        dev_dev_grd_propagate_row(blocks, gxx, gyy, xx, yy, blocks->states[new_idx], pending, next);
+    }
+    //}
 
-    
-
-    *return_val = 0; 
-    
+    *return_val = 0;
 }
-
-
-
-
-

@@ -10,7 +10,7 @@ solve_cpu(wfc_blocks_ptr blocks, uint64_t seed, masks_ptr my_masks)
 {
     printf("inside solver cpu \n"); 
         //print_masks(my_masks, blocks->block_side, blocks->grid_side);
-    grd_print(NULL, blocks);
+    //grd_print(NULL, blocks);
     // seed = blocks->states[0];
 
     uint64_t iteration  = 0;
@@ -45,8 +45,8 @@ uint32_t block_idx;
         //printf("inside loc.entropy = 1\n"); 
             return false;
         }
-        printf("before collapsing\n"); 
-        grd_print(NULL, blocks); 
+        //printf("before collapsing\n"); 
+        //grd_print(NULL, blocks); 
         //print_masks(my_masks, blocks->block_side, blocks->grid_side);
 
         // Collapse
@@ -66,8 +66,8 @@ uint32_t block_idx;
         col_idx   = loc.location_in_grid.y * blocks->block_side + loc.location_in_blk.y; 
         row_idx   = loc.location_in_grid.x * blocks->block_side + loc.location_in_blk.x; 
         block_idx = loc.location_in_grid.x * blocks->grid_side  + loc.location_in_grid.y; 
-        printf("after collapsing\n"); 
-        grd_print(NULL, blocks); 
+        //printf("after collapsing\n"); 
+        //grd_print(NULL, blocks); 
         set_mask(my_masks, col_idx, row_idx, block_idx, blocks->states[idx]); 
         if(my_masks->safe_exit == 1)
         {
@@ -89,9 +89,8 @@ uint32_t block_idx;
                         
                         
                         return false; } 
-        grd_print(NULL, blocks); 
-        
-        print_masks(my_masks, blocks->block_side, blocks->grid_side);
+        //grd_print(NULL, blocks); 
+        //print_masks(my_masks, blocks->block_side, blocks->grid_side);
 
         iteration += 1;
         //if (iteration == 1) break; 
